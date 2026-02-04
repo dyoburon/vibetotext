@@ -2,7 +2,6 @@
 
 import json
 import os
-import platform
 import subprocess
 import sys
 import tempfile
@@ -10,8 +9,7 @@ import threading
 import queue
 
 # Platform detection
-IS_MACOS = platform.system() == "Darwin"
-IS_WINDOWS = platform.system() == "Windows"
+IS_WINDOWS = sys.platform == "win32"
 
 # Path for IPC - use platform-appropriate temp directory
 if IS_WINDOWS:
@@ -67,40 +65,7 @@ def _write_ipc_async(data):
 
 def _get_cursor_and_screen():
     """Get cursor position and screen bounds - platform-specific."""
-    if IS_MACOS:
-        try:
-            from Quartz import CGEventCreate, CGEventGetLocation
-            from AppKit import NSScreen
-
-            # Get cursor position
-            event = CGEventCreate(None)
-            pos = CGEventGetLocation(event)
-            cursor_x, cursor_y = int(pos.x), int(pos.y)
-
-            # Find which screen the cursor is on
-            for screen in NSScreen.screens():
-                frame = screen.frame()
-                if (frame.origin.x <= cursor_x <= frame.origin.x + frame.size.width and
-                    frame.origin.y <= cursor_y <= frame.origin.y + frame.size.height):
-                    return {
-                        "screen_x": int(frame.origin.x),
-                        "screen_y": int(frame.origin.y),
-                        "screen_w": int(frame.size.width),
-                        "screen_h": int(frame.size.height),
-                    }
-
-            # Fallback to main screen
-            main = NSScreen.mainScreen().frame()
-            return {
-                "screen_x": int(main.origin.x),
-                "screen_y": int(main.origin.y),
-                "screen_w": int(main.size.width),
-                "screen_h": int(main.size.height),
-            }
-        except Exception:
-            pass
-
-    elif IS_WINDOWS:
+    if IS_WINDOWS:
         try:
             import ctypes
             from ctypes import wintypes
@@ -153,10 +118,10 @@ def _find_ui_binary():
     # Determine the UI binary name based on platform
     if IS_WINDOWS:
         ui_binary_name = "vibetotext-ui.exe"
-        ui_script_name = "ui_tkinter.py"  # Use tkinter on Windows
-    else:
+    else:  # Linux and others
         ui_binary_name = "vibetotext-ui"
-        ui_script_name = "ui_standalone.py"  # Use native NSPanel on macOS
+
+    ui_script_name = "ui_tkinter.py"  # Use tkinter on all platforms
 
     # Check if we're running from a PyInstaller bundle
     if getattr(sys, 'frozen', False):
@@ -168,27 +133,12 @@ def _find_ui_binary():
             print(f"[UI] Found bundled UI binary")
             return ui_binary, []
 
-        # Also check in Resources folder (for macOS .app bundles)
-        if IS_MACOS:
-            resources_dir = os.path.join(os.path.dirname(base_dir), "Resources")
-            ui_binary = os.path.join(resources_dir, ui_binary_name)
-            print(f"[UI] Looking for UI binary at: {ui_binary}")
-            if os.path.exists(ui_binary):
-                print(f"[UI] Found UI binary in Resources")
-                return ui_binary, []
-
         print(f"[UI] UI binary not found!")
 
-    # Running from source - use Python to run the standalone script
+    # Running from source - use Python to run the tkinter script
     ui_script = os.path.join(os.path.dirname(__file__), ui_script_name)
     if os.path.exists(ui_script):
         print(f"[UI] Running from source with script: {ui_script}")
-        return sys.executable, [ui_script]
-
-    # Fallback to tkinter version if native not found
-    ui_script = os.path.join(os.path.dirname(__file__), "ui_tkinter.py")
-    if os.path.exists(ui_script):
-        print(f"[UI] Falling back to tkinter UI: {ui_script}")
         return sys.executable, [ui_script]
 
     return None, None

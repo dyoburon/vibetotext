@@ -1,6 +1,7 @@
 """Main CLI entry point."""
 
 import argparse
+import json
 import os
 import subprocess
 import sys
@@ -40,6 +41,10 @@ def open_history_app():
 
 
 def main():
+    # Default hotkeys
+    greppy_default = "ctrl+alt+shift"
+    plan_default = "ctrl+alt+p"
+
     parser = argparse.ArgumentParser(
         description="Voice-to-text with automatic code context injection"
     )
@@ -50,14 +55,19 @@ def main():
         help="Whisper model size (default: base)",
     )
     parser.add_argument(
+        "--language",
+        default="auto",
+        help="Language for transcription (default: auto = bilingual Vietnamese+English, 'en' = English only, 'vi' = Vietnamese only)",
+    )
+    parser.add_argument(
         "--hotkey",
         default="ctrl+shift",
         help="Hotkey to hold while speaking (default: ctrl+shift)",
     )
     parser.add_argument(
         "--greppy-hotkey",
-        default="cmd+shift",
-        help="Hotkey for Greppy semantic search mode (default: cmd+shift)",
+        default=greppy_default,
+        help=f"Hotkey for Greppy semantic search mode (default: {greppy_default})",
     )
     parser.add_argument(
         "--cleanup-hotkey",
@@ -66,8 +76,8 @@ def main():
     )
     parser.add_argument(
         "--plan-hotkey",
-        default="cmd+alt",
-        help="Hotkey for implementation plan mode (default: cmd+alt)",
+        default=plan_default,
+        help=f"Hotkey for implementation plan mode (default: {plan_default})",
     )
     parser.add_argument(
         "--history-hotkey",
@@ -120,15 +130,12 @@ def main():
             ui = ui_module
             print("[DEBUG] UI module loaded successfully", flush=True)
         except Exception as e:
-            import traceback
             print(f"[DEBUG] Failed to load UI module: {e}", flush=True)
             traceback.print_exc()
-            pass
     else:
         print("[DEBUG] UI disabled via --no-ui flag", flush=True)
 
     # Load config for saved audio device (unless overridden by --device)
-    import json
     config_file = Path.home() / ".vibetotext" / "config.json"
     saved_device = args.device  # Command line takes priority
     if saved_device is None:
@@ -147,7 +154,7 @@ def main():
 
     # Initialize components
     recorder = AudioRecorder()
-    transcriber = Transcriber(model_name=args.model)
+    transcriber = Transcriber(model_name=args.model, language=args.language)
     history = TranscriptionHistory()
 
     # Set up hotkeys for all modes

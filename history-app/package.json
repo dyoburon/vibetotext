@@ -31,13 +31,6 @@
         "from": "../dist/vibetotext-ui",
         "to": "vibetotext-ui"
       }
-    ],
-    "mac": {
-      "category": "public.app-category.utilities",
-      "icon": "icon.icns",
-      "entitlements": "entitlements.mac.plist",
-      "entitlementsInherit": "entitlements.mac.plist",
-      "hardenedRuntime": true
-    }
+    ]
   }
 }

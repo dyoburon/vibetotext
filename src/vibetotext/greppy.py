@@ -1,12 +1,14 @@
 """Greppy semantic search integration (Rust CLI)."""
 
 import json
+import os
 import subprocess
+from pathlib import Path
 from typing import List, Tuple
 
 
-# Default codebase path (will be configurable later)
-DEFAULT_CODEBASE = "/Users/dylan/Desktop/projects/datafeeds"
+# Default codebase path (will use current working directory)
+DEFAULT_CODEBASE = None
 
 
 def search_files(query: str, limit: int = 10, codebase: str = None) -> List[Tuple[str, int]]:
@@ -16,13 +18,13 @@ def search_files(query: str, limit: int = 10, codebase: str = None) -> List[Tupl
     Args:
         query: The search query
         limit: Maximum number of files to return
-        codebase: Path to the codebase (defaults to DEFAULT_CODEBASE)
+        codebase: Path to the codebase (defaults to current working directory)
 
     Returns:
         List of (filepath, line_number) tuples
     """
     if codebase is None:
-        codebase = DEFAULT_CODEBASE
+        codebase = os.getcwd()
 
     try:
         # Rust greppy: query first, then options

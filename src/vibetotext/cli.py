@@ -20,6 +20,10 @@ from .history_ui import toggle_history, refresh_history
 
 
 def main():
+    # Default hotkeys
+    greppy_default = "ctrl+alt+shift"
+    plan_default = "ctrl+alt+p"
+
     parser = argparse.ArgumentParser(
         description="Voice-to-text with automatic code context injection"
     )
@@ -30,14 +34,19 @@ def main():
         help="Whisper model size (default: base)",
     )
     parser.add_argument(
+        "--language",
+        default="auto",
+        help="Language for transcription (default: auto = bilingual Vietnamese+English, 'en' = English only, 'vi' = Vietnamese only)",
+    )
+    parser.add_argument(
         "--hotkey",
         default="ctrl+shift",
         help="Hotkey to hold while speaking (default: ctrl+shift)",
     )
     parser.add_argument(
         "--greppy-hotkey",
-        default="cmd+alt+shift",
-        help="Hotkey for Greppy semantic search mode (default: cmd+alt+shift)",
+        default=greppy_default,
+        help=f"Hotkey for Greppy semantic search mode (default: {greppy_default})",
     )
     parser.add_argument(
         "--cleanup-hotkey",
@@ -46,8 +55,8 @@ def main():
     )
     parser.add_argument(
         "--plan-hotkey",
-        default="cmd+alt+p",
-        help="Hotkey for implementation plan mode (default: cmd+alt+p)",
+        default=plan_default,
+        help=f"Hotkey for implementation plan mode (default: {plan_default})",
     )
     parser.add_argument(
         "--codebase",
@@ -101,7 +110,7 @@ def main():
 
     # Initialize components
     recorder = AudioRecorder(device=saved_device)
-    transcriber = Transcriber(model_name=args.model)  # Custom dictionary is hot-reloaded from config
+    transcriber = Transcriber(model_name=args.model, language=args.language)  # Custom dictionary is hot-reloaded from config
     history = TranscriptionHistory()
 
     # Log available audio devices
@@ -140,6 +149,8 @@ def main():
         recorder.on_level = ui.update_waveform
 
     print(f"vibetotext ready. Hold hotkey to record, release to process.")
+    print(f"  Model: {args.model}")
+    print(f"  Language: {args.language}")
     print(f"  [{args.hotkey}] = transcribe + paste")
     print(f"  [{args.greppy_hotkey}] = Greppy search + attach files")
     print(f"  [{args.cleanup_hotkey}] = cleanup/refine with Gemini")

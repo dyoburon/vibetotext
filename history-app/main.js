@@ -24,7 +24,7 @@ function createWindow() {
     x: Math.min(cursorPoint.x, display.bounds.x + display.bounds.width - 450),
     y: display.bounds.y + 50,
     frame: true,  // Show window frame with title bar
-    titleBarStyle: 'hiddenInset',  // macOS style with traffic lights
+    titleBarStyle: 'default',  // Standard title bar
     resizable: true,
     show: false,
     skipTaskbar: false,  // Show in taskbar/dock
@@ -39,7 +39,7 @@ function createWindow() {
 
   // Open dev tools with keyboard shortcut
   mainWindow.webContents.on('before-input-event', (event, input) => {
-    if (input.meta && input.alt && input.key === 'i') {
+    if (input.control && input.alt && input.key === 'i') {
       mainWindow.webContents.toggleDevTools();
     }
   });
@@ -85,17 +85,7 @@ function createTray() {
   );
   let icon = nativeImage.createFromBuffer(iconData);
 
-  // Set as template image for macOS (adapts to light/dark mode)
-  if (process.platform === 'darwin') {
-    icon.setTemplateImage(true);
-  }
-
   tray = new Tray(icon);
-
-  // Also show text label on macOS for better visibility
-  if (process.platform === 'darwin') {
-    tray.setTitle(' VTT');
-  }
   tray.setToolTip('VibeToText History');
 
   // Click to toggle window

@@ -20,6 +20,14 @@ dependencies = [
 dev = [
     "pytest",
 ]
+llm = [
+    "google-genai",
+    "python-dotenv",
+]
+all = [
+    "vibetotext[llm]",
+    "vibetotext[dev]",
+]
 
 [project.scripts]
 vibetotext = "vibetotext.cli:main"

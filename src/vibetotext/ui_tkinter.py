@@ -106,11 +106,8 @@ class WaveformWindow:
                     right_edge_x = screen_x + int(screen_w * 0.74)
                     x = right_edge_x - self.width
 
-                    # On Windows, y is from top; position near bottom
+                    # Position near bottom (y is from top on all platforms)
                     y = screen_y + screen_h - self.height - 40
-                    # On macOS (fallback), y is from bottom
-                    if sys.platform == "darwin":
-                        y = screen_y + 20
 
                     # Store anchors for animation
                     self.anchor_right = right_edge_x

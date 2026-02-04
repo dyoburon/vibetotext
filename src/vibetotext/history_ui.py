@@ -1,4 +1,4 @@
-"""History viewer UI - native macOS window."""
+"""History viewer UI using tkinter."""
 
 import json
 import os
@@ -11,29 +11,35 @@ _history_ipc_file = os.path.join(tempfile.gettempdir(), "vibetotext_history_ipc.
 _history_ui_process = None
 
 # The History UI script that runs in its own process
-HISTORY_UI_SCRIPT = '''
+HISTORY_UI_SCRIPT_TKINTER = '''
 import json
 import os
 import sys
+import sqlite3
+import tkinter as tk
+from tkinter import ttk, scrolledtext
 from datetime import datetime
 from pathlib import Path
-
-# PyObjC imports
-from AppKit import (
-    NSApplication, NSApp, NSWindow, NSView, NSColor, NSFont,
-    NSBackingStoreBuffered, NSMakeRect, NSWindowStyleMaskTitled,
-    NSWindowStyleMaskClosable, NSWindowStyleMaskResizable,
-    NSTimer, NSTextField, NSScrollView, NSTextView,
-    NSBezelBorder, NSLayoutAttributeWidth, NSLayoutAttributeHeight,
-    NSPopUpButton, NSBox,
-)
-from Foundation import NSObject, NSAttributedString, NSMutableAttributedString
-from Foundation import NSForegroundColorAttributeName, NSFontAttributeName
-import objc
+from collections import Counter
 
 IPC_FILE = sys.argv[1]
-HISTORY_FILE = Path.home() / ".vibetotext" / "history.json"
+HISTORY_DB = Path.home() / ".vibetotext" / "history.db"
 CONFIG_FILE = Path.home() / ".vibetotext" / "config.json"
+
+STOPWORDS = {
+    "a", "an", "the", "and", "or", "but", "in", "on", "at", "to", "for",
+    "of", "with", "by", "from", "as", "is", "was", "are", "were", "been",
+    "be", "have", "has", "had", "do", "does", "did", "will", "would",
+    "could", "should", "may", "might", "must", "shall", "can", "need",
+    "i", "you", "he", "she", "it", "we", "they", "me", "him", "her",
+    "my", "your", "his", "its", "our", "their", "this", "that", "these",
+    "what", "which", "who", "where", "when", "why", "how", "all", "each",
+    "some", "no", "not", "only", "so", "than", "too", "very", "just",
+    "also", "now", "here", "there", "then", "if", "because", "about",
+    "any", "up", "down", "out", "off", "over", "going", "gonna", "like",
+    "okay", "ok", "yeah", "yes", "um", "uh", "ah", "oh", "well", "right",
+    "actually", "basically", "really", "thing", "things", "something",
+}
 
 
 def get_audio_devices():
@@ -44,12 +50,12 @@ def get_audio_devices():
         input_devices = []
         default_idx = sd.default.device[0]
         for i, dev in enumerate(devices):
-            if dev['max_input_channels'] > 0:
+            if dev["max_input_channels"] > 0:
                 is_default = (i == default_idx)
                 input_devices.append({
-                    'index': i,
-                    'name': dev['name'],
-                    'is_default': is_default,
+                    "index": i,
+                    "name": dev["name"],
+                    "is_default": is_default,
                 })
         return input_devices
     except Exception:
@@ -76,32 +82,53 @@ def save_config(config):
     except Exception:
         pass
 
-# Stopwords for statistics (same as history.py)
-STOPWORDS = {
-    "a", "an", "the", "and", "or", "but", "in", "on", "at", "to", "for",
-    "of", "with", "by", "from", "as", "is", "was", "are", "were", "been",
-    "be", "have", "has", "had", "do", "does", "did", "will", "would",
-    "could", "should", "may", "might", "must", "shall", "can", "need",
-    "i", "you", "he", "she", "it", "we", "they", "me", "him", "her",
-    "my", "your", "his", "its", "our", "their", "this", "that", "these",
-    "what", "which", "who", "where", "when", "why", "how", "all", "each",
-    "some", "no", "not", "only", "so", "than", "too", "very", "just",
-    "also", "now", "here", "there", "then", "if", "because", "about",
-    "any", "up", "down", "out", "off", "over", "going", "gonna", "like",
-    "okay", "ok", "yeah", "yes", "um", "uh", "ah", "oh", "well", "right",
-    "actually", "basically", "really", "thing", "things", "something",
-}
 
-
-def load_history():
-    """Load history from disk."""
+def load_history_from_db():
+    """Load history entries from SQLite database."""
+    entries = []
     try:
-        if HISTORY_FILE.exists():
-            with open(HISTORY_FILE, "r") as f:
-                return json.load(f)
+        if not HISTORY_DB.exists():
+            return entries
+        conn = sqlite3.connect(str(HISTORY_DB))
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT * FROM entries ORDER BY timestamp DESC LIMIT 50"
+        ).fetchall()
+        for row in rows:
+            entries.append({
+                "text": row["text"],
+                "mode": row["mode"],
+                "timestamp": row["timestamp"],
+                "word_count": row["word_count"],
+                "duration_seconds": row["duration_seconds"],
+                "wpm": row["wpm"],
+            })
+        conn.close()
     except Exception:
         pass
-    return {"entries": []}
+    return entries
+
+
+def get_all_entries_for_stats():
+    """Load all entries for computing statistics."""
+    entries = []
+    try:
+        if not HISTORY_DB.exists():
+            return entries
+        conn = sqlite3.connect(str(HISTORY_DB))
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute("SELECT text, mode, timestamp, word_count FROM entries").fetchall()
+        for row in rows:
+            entries.append({
+                "text": row["text"],
+                "mode": row["mode"],
+                "timestamp": row["timestamp"],
+                "word_count": row["word_count"],
+            })
+        conn.close()
+    except Exception:
+        pass
+    return entries
 
 
 def get_statistics(entries):
@@ -112,12 +139,10 @@ def get_statistics(entries):
     total_words = sum(e.get("word_count", len(e["text"].split())) for e in entries)
     total_sessions = len(entries)
 
-    # Word frequency
-    from collections import Counter
     all_words = []
     for entry in entries:
         words = entry["text"].lower().split()
-        words = [w.strip(".,!?;:\\'\\\"()[]{}") for w in words]
+        words = [w.strip(".,!?;:\\\\\\'\\\\\\"\\"\\\'()[]{}") for w in words]
         words = [w for w in words if w and len(w) > 2 and w not in STOPWORDS]
         all_words.extend(words)
 
@@ -131,149 +156,107 @@ def get_statistics(entries):
     }
 
 
-class HistoryWindow(NSObject):
-    def init(self):
-        self = objc.super(HistoryWindow, self).init()
-        if self:
-            self.window = None
-            self.visible = False
-            self.text_view = None
-            self.mic_dropdown = None
-            self.audio_devices = []
-        return self
+def get_monospace_font():
+    """Return monospace font name for Linux."""
+    return "monospace"
 
-    def applicationDidFinishLaunching_(self, notification):
-        # Create window
-        width = 450
-        height = 550
 
-        self.window = NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
-            NSMakeRect(100, 100, width, height),
-            NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskResizable,
-            NSBackingStoreBuffered,
-            False
-        )
+class HistoryApp:
+    def __init__(self):
+        self.root = tk.Tk()
+        self.root.title("Transcription History")
+        self.root.geometry("450x550")
+        self.root.configure(bg="#1a1a1a")
+        self.root.minsize(350, 400)
+        self.visible = False
 
-        self.window.setTitle_("Transcription History")
-        self.window.setMinSize_((350, 400))
+        # Style
+        style = ttk.Style()
+        style.theme_use("clam")
+        style.configure("Dark.TFrame", background="#1a1a1a")
+        style.configure("Dark.TLabel", background="#1a1a1a", foreground="#cccccc",
+                         font=("sans-serif", 10))
+        style.configure("Dark.TCombobox", fieldbackground="#2a2a2a", foreground="#cccccc")
 
-        # Dark background
-        self.window.setBackgroundColor_(
-            NSColor.colorWithCalibratedRed_green_blue_alpha_(0.12, 0.12, 0.14, 1.0)
-        )
+        # Top frame for mic dropdown
+        top_frame = ttk.Frame(self.root, style="Dark.TFrame", padding=(10, 8))
+        top_frame.pack(fill=tk.X)
 
-        # Create microphone label
-        mic_label = NSTextField.alloc().initWithFrame_(
-            NSMakeRect(15, height - 40, 85, 20)
-        )
-        mic_label.setStringValue_("Microphone:")
-        mic_label.setBezeled_(False)
-        mic_label.setDrawsBackground_(False)
-        mic_label.setEditable_(False)
-        mic_label.setSelectable_(False)
-        mic_label.setTextColor_(
-            NSColor.colorWithCalibratedRed_green_blue_alpha_(0.8, 0.8, 0.8, 1.0)
-        )
-        mic_label.setFont_(NSFont.systemFontOfSize_(12.0))
-        self.window.contentView().addSubview_(mic_label)
+        mic_label = ttk.Label(top_frame, text="Microphone:", style="Dark.TLabel")
+        mic_label.pack(side=tk.LEFT, padx=(0, 5))
 
-        # Create microphone dropdown
-        self.mic_dropdown = NSPopUpButton.alloc().initWithFrame_pullsDown_(
-            NSMakeRect(100, height - 42, width - 115, 24), False
-        )
         self.audio_devices = get_audio_devices()
+        device_names = []
         config = load_config()
         saved_device = config.get("audio_device_index")
-
         selected_idx = 0
         for i, dev in enumerate(self.audio_devices):
-            name = dev['name']
-            if dev['is_default']:
+            name = dev["name"]
+            if dev["is_default"]:
                 name += " (System Default)"
-            self.mic_dropdown.addItemWithTitle_(name)
-            if saved_device is not None and dev['index'] == saved_device:
+            device_names.append(name)
+            if saved_device is not None and dev["index"] == saved_device:
                 selected_idx = i
 
-        if self.audio_devices:
-            self.mic_dropdown.selectItemAtIndex_(selected_idx)
+        self.mic_var = tk.StringVar()
+        self.mic_dropdown = ttk.Combobox(top_frame, textvariable=self.mic_var,
+                                          values=device_names, state="readonly")
+        if device_names:
+            self.mic_dropdown.current(selected_idx)
+        self.mic_dropdown.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.mic_dropdown.bind("<<ComboboxSelected>>", self._on_mic_changed)
 
-        self.mic_dropdown.setTarget_(self)
-        self.mic_dropdown.setAction_("microphoneChanged:")
-        self.window.contentView().addSubview_(self.mic_dropdown)
-
-        # Create scroll view with text view (below the dropdown)
-        scroll_view = NSScrollView.alloc().initWithFrame_(
-            NSMakeRect(15, 15, width - 30, height - 60)
+        # Text area
+        font_name = get_monospace_font()
+        self.text_area = scrolledtext.ScrolledText(
+            self.root,
+            wrap=tk.WORD,
+            bg="#14141a",
+            fg="#e6e6e6",
+            insertbackground="#e6e6e6",
+            selectbackground="#3a3a5a",
+            font=(font_name, 12),
+            borderwidth=1,
+            relief=tk.SUNKEN,
+            padx=8,
+            pady=8,
         )
-        scroll_view.setHasVerticalScroller_(True)
-        scroll_view.setBorderType_(NSBezelBorder)
-        scroll_view.setAutoresizingMask_(18)  # Width + Height flexible
-
-        # Create text view for content
-        content_size = scroll_view.contentSize()
-        self.text_view = NSTextView.alloc().initWithFrame_(
-            NSMakeRect(0, 0, content_size.width, content_size.height)
-        )
-        self.text_view.setMinSize_((0, content_size.height))
-        self.text_view.setMaxSize_((10000, 10000))
-        self.text_view.setVerticallyResizable_(True)
-        self.text_view.setHorizontallyResizable_(False)
-        self.text_view.setAutoresizingMask_(2)  # Width flexible
-        self.text_view.textContainer().setWidthTracksTextView_(True)
-        self.text_view.setEditable_(False)
-        self.text_view.setSelectable_(True)
-        self.text_view.setBackgroundColor_(
-            NSColor.colorWithCalibratedRed_green_blue_alpha_(0.08, 0.08, 0.1, 1.0)
-        )
-        self.text_view.setTextColor_(NSColor.whiteColor())
-
-        scroll_view.setDocumentView_(self.text_view)
-        self.window.contentView().addSubview_(scroll_view)
-
-        # Center window on screen
-        self.window.center()
-
-        # Load and display content
-        self.refresh_content()
-
-        # Start IPC timer
-        self.timer = NSTimer.scheduledTimerWithTimeInterval_target_selector_userInfo_repeats_(
-            0.1, self, "checkIPC:", None, True
-        )
+        self.text_area.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
+        self.text_area.configure(state=tk.DISABLED)
 
         # Handle window close
-        self.window.setDelegate_(self)
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
-    def windowWillClose_(self, notification):
+        self.refresh_content()
+        self.check_ipc()
+
+    def _on_mic_changed(self, event=None):
+        """Called when microphone dropdown selection changes."""
+        idx = self.mic_dropdown.current()
+        if 0 <= idx < len(self.audio_devices):
+            device = self.audio_devices[idx]
+            config = load_config()
+            config["audio_device_index"] = device["index"]
+            config["audio_device_name"] = device["name"]
+            save_config(config)
+
+    def _on_close(self):
         """Called when window is closed via X button."""
         self.visible = False
-        # Write to IPC that we're hidden
         try:
             with open(IPC_FILE, "w") as f:
                 json.dump({"visible": False}, f)
         except Exception:
             pass
-
-    def microphoneChanged_(self, sender):
-        """Called when microphone dropdown selection changes."""
-        idx = sender.indexOfSelectedItem()
-        if 0 <= idx < len(self.audio_devices):
-            device = self.audio_devices[idx]
-            config = load_config()
-            config["audio_device_index"] = device['index']
-            config["audio_device_name"] = device['name']
-            save_config(config)
+        self.root.withdraw()
 
     def refresh_content(self):
-        """Refresh the history display."""
-        data = load_history()
-        entries = sorted(data.get("entries", []), key=lambda x: x.get("timestamp", ""), reverse=True)
-        stats = get_statistics(entries)
+        """Refresh display with latest history."""
+        recent_entries = load_history_from_db()
+        all_entries = get_all_entries_for_stats()
+        stats = get_statistics(all_entries)
 
-        # Build content string
         content = []
-
-        # Statistics header
         content.append("=" * 50)
         content.append("                    STATISTICS")
         content.append("=" * 50)
@@ -293,8 +276,7 @@ class HistoryWindow(NSObject):
         content.append("=" * 50)
         content.append("")
 
-        # Entries
-        for entry in entries[:50]:  # Show last 50
+        for entry in recent_entries:
             timestamp = entry.get("timestamp", "")
             try:
                 dt = datetime.fromisoformat(timestamp)
@@ -305,36 +287,25 @@ class HistoryWindow(NSObject):
             mode = entry.get("mode", "transcribe").upper()
             word_count = entry.get("word_count", len(entry.get("text", "").split()))
             text = entry.get("text", "")
-
-            # Truncate long text
             preview = text[:200] + "..." if len(text) > 200 else text
 
             content.append(f"[{time_str}] [{mode}] ({word_count} words)")
             content.append(f"  {preview}")
             content.append("")
 
-        if not entries:
+        if not recent_entries:
             content.append("  No transcriptions yet.")
             content.append("  Use ctrl+shift to start recording!")
             content.append("")
 
-        # Set content
         full_text = "\\n".join(content)
 
-        # Create attributed string with monospace font
-        font = NSFont.fontWithName_size_("Menlo", 12.0)
-        if not font:
-            font = NSFont.monospacedSystemFontOfSize_weight_(12.0, 0.0)
+        self.text_area.configure(state=tk.NORMAL)
+        self.text_area.delete("1.0", tk.END)
+        self.text_area.insert("1.0", full_text)
+        self.text_area.configure(state=tk.DISABLED)
 
-        attrs = {
-            NSForegroundColorAttributeName: NSColor.colorWithCalibratedRed_green_blue_alpha_(0.9, 0.9, 0.9, 1.0),
-            NSFontAttributeName: font,
-        }
-
-        attr_string = NSAttributedString.alloc().initWithString_attributes_(full_text, attrs)
-        self.text_view.textStorage().setAttributedString_(attr_string)
-
-    def checkIPC_(self, timer):
+    def check_ipc(self):
         """Check IPC file for commands."""
         try:
             if os.path.exists(IPC_FILE):
@@ -342,7 +313,7 @@ class HistoryWindow(NSObject):
                     data = json.load(f)
 
                 if data.get("stop"):
-                    NSApp.terminate_(None)
+                    self.root.destroy()
                     return
 
                 should_show = data.get("show", False)
@@ -350,32 +321,31 @@ class HistoryWindow(NSObject):
 
                 if should_show and not self.visible:
                     self.refresh_content()
-                    self.window.makeKeyAndOrderFront_(None)
-                    NSApp.activateIgnoringOtherApps_(True)
+                    self.root.deiconify()
+                    self.root.lift()
+                    self.root.focus_force()
                     self.visible = True
                 elif not should_show and self.visible:
-                    self.window.orderOut_(None)
+                    self.root.withdraw()
                     self.visible = False
                 elif should_refresh and self.visible:
                     self.refresh_content()
-                    # Clear refresh flag
                     data["refresh"] = False
                     with open(IPC_FILE, "w") as f:
                         json.dump(data, f)
         except Exception:
             pass
 
+        self.root.after(100, self.check_ipc)
 
-def main():
-    app = NSApplication.sharedApplication()
-    delegate = HistoryWindow.alloc().init()
-    app.setDelegate_(delegate)
-    app.setActivationPolicy_(0)  # Regular app - shows in dock when active
-    app.run()
+    def run(self):
+        self.root.withdraw()
+        self.root.mainloop()
 
 
 if __name__ == "__main__":
-    main()
+    app = HistoryApp()
+    app.run()
 '''
 
 
@@ -397,10 +367,12 @@ def _ensure_history_ui_process():
     if _history_ui_process is not None and _history_ui_process.poll() is None:
         return
 
+    script_content = HISTORY_UI_SCRIPT_TKINTER
+
     # Write the UI script to a temp file
     script_file = os.path.join(tempfile.gettempdir(), "vibetotext_history_ui.py")
     with open(script_file, "w") as f:
-        f.write(HISTORY_UI_SCRIPT)
+        f.write(script_content)
 
     # Clear any old IPC file
     if os.path.exists(_history_ipc_file):

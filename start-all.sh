@@ -1,14 +1,17 @@
 #!/bin/bash
 
-# VibeToText Stream Startup Script
+# Start History App and VibeToText
 
 BASE="$(cd "$(dirname "$0")" && pwd)"
+
+echo "Starting History App..."
+cd "$BASE/history-app" && npm start &
+
+sleep 2
 
 echo "Starting VibeToText..."
 cd "$BASE" && source .venv/bin/activate && python -m vibetotext &
 
-echo ""
-echo "Waiting for VibeToText to initialize..."
 sleep 3
 
-echo "VibeToText startup complete!"
+echo "All services started!"

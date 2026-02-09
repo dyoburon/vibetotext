@@ -8,22 +8,50 @@ app.setName('VibeToText');
 console.log('Starting VibeToText app...');
 
 // History file path
-const HISTORY_PATH = path.join(os.homedir(), '.vibetotext', 'history.json');
+const HISTORY_PATH = path.join(os.homedir(), '.vibetotext', 'history.db');
+const WINDOW_STATE_PATH = path.join(os.homedir(), '.vibetotext', 'window-state.json');
+
+function loadWindowState() {
+  try {
+    if (fs.existsSync(WINDOW_STATE_PATH)) {
+      return JSON.parse(fs.readFileSync(WINDOW_STATE_PATH, 'utf8'));
+    }
+  } catch (e) {}
+  return null;
+}
+
+function saveWindowState() {
+  if (!mainWindow) return;
+  const bounds = mainWindow.getBounds();
+  try {
+    fs.writeFileSync(WINDOW_STATE_PATH, JSON.stringify(bounds));
+  } catch (e) {}
+}
 
 let tray = null;
 let mainWindow = null;
 let watcher = null;
 
 function createWindow() {
-  // Get cursor position to show window near it
-  const cursorPoint = screen.getCursorScreenPoint();
-  const display = screen.getDisplayNearestPoint(cursorPoint);
+  const saved = loadWindowState();
+
+  // Use saved position/size, or fall back to cursor-based default
+  let windowOpts;
+  if (saved) {
+    windowOpts = { x: saved.x, y: saved.y, width: saved.width, height: saved.height };
+  } else {
+    const cursorPoint = screen.getCursorScreenPoint();
+    const display = screen.getDisplayNearestPoint(cursorPoint);
+    windowOpts = {
+      width: 450,
+      height: 600,
+      x: Math.min(cursorPoint.x, display.bounds.x + display.bounds.width - 450),
+      y: display.bounds.y + 50,
+    };
+  }
 
   mainWindow = new BrowserWindow({
-    width: 450,
-    height: 600,
-    x: Math.min(cursorPoint.x, display.bounds.x + display.bounds.width - 450),
-    y: display.bounds.y + 50,
+    ...windowOpts,
     frame: true,  // Show window frame with title bar
     titleBarStyle: 'hiddenInset',  // macOS style with traffic lights
     resizable: true,
@@ -50,6 +78,9 @@ function createWindow() {
   //   mainWindow.hide();
   // });
 
+  mainWindow.on('move', saveWindowState);
+  mainWindow.on('resize', saveWindowState);
+
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
@@ -63,13 +94,6 @@ function toggleWindow() {
   if (mainWindow.isVisible()) {
     mainWindow.hide();
   } else {
-    // Reposition near cursor
-    const cursorPoint = screen.getCursorScreenPoint();
-    const display = screen.getDisplayNearestPoint(cursorPoint);
-    mainWindow.setPosition(
-      Math.min(cursorPoint.x - 225, display.bounds.x + display.bounds.width - 450),
-      display.bounds.y + 25
-    );
     mainWindow.show();
     mainWindow.focus();
   }

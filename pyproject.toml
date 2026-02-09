@@ -15,6 +15,7 @@ dependencies = [
     "numpy",
     "pyperclip",
     "pynput",
+    "google-generativeai",
     "python-dotenv",
 ]
 

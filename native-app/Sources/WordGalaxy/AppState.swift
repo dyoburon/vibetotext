@@ -18,6 +18,7 @@ final class AppState: ObservableObject {
     // Tree data
     @Published var treeData = TreeData.placeholder
     @Published var treeWordDataJSON: String = "[]"
+    @Published var treeStrataJSON: String = "[]"
 
     private let db = DatabaseManager()
     private var fileMonitor: DispatchSourceFileSystemObject?
@@ -47,11 +48,37 @@ final class AppState: ObservableObject {
 
             let formatter = DateFormatter()
             formatter.dateFormat = "MMM d, yyyy"
-            let wordDataArray = frequencies.prefix(300).enumerated().map { i, wf -> [String: Any] in
+            let wordDataArray = frequencies.prefix(500).enumerated().map { i, wf -> [String: Any] in
                 ["word": wf.word, "count": wf.count,
-                 "firstSeen": formatter.string(from: wf.firstSeen), "rank": i + 1]
+                 "firstSeen": formatter.string(from: wf.firstSeen),
+                 "firstSeenTS": wf.firstSeen.timeIntervalSince1970,
+                 "rank": i + 1]
             }
             let treeWordDataJSON = (try? JSONSerialization.data(withJSONObject: wordDataArray))
+                .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
+
+            // Compute strata: sort all words by firstSeen, divide into trunk levels
+            let sortedByDate = frequencies.sorted { $0.firstSeen < $1.firstSeen }
+            let uniqueCount = frequencies.count
+            let trunkLevels: Int = {
+                if uniqueCount >= 5000 { return 10 }
+                if uniqueCount >= 2000 { return 8 }
+                if uniqueCount >= 800 { return 6 }
+                if uniqueCount >= 200 { return 4 }
+                if uniqueCount >= 50 { return 3 }
+                return 2
+            }()
+            let perStratum = max(1, sortedByDate.count / trunkLevels)
+            var strataArray: [[String: Any]] = []
+            for i in 0..<trunkLevels {
+                let start = i * perStratum
+                let end = i == trunkLevels - 1 ? sortedByDate.count : min(start + perStratum, sortedByDate.count)
+                guard start < sortedByDate.count else { break }
+                let slice = sortedByDate[start..<end]
+                let totalFreq = slice.reduce(0) { $0 + $1.count }
+                strataArray.append(["wordCount": slice.count, "totalFreq": totalFreq])
+            }
+            let treeStrataJSON = (try? JSONSerialization.data(withJSONObject: strataArray))
                 .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
 
             DispatchQueue.main.async {
@@ -64,6 +91,7 @@ final class AppState: ObservableObject {
                 self.uniqueWords = frequencies.count
                 self.treeData = treeData
                 self.treeWordDataJSON = treeWordDataJSON
+                self.treeStrataJSON = treeStrataJSON
                 self.isLoading = false
             }
         }

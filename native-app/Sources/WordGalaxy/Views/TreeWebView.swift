@@ -9,6 +9,7 @@ struct TreeWebView: NSViewRepresentable {
     let wordDataJSON: String
     let uniqueWords: Int
     let totalWords: Int
+    let strataJSON: String
 
     func makeNSView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
@@ -30,6 +31,7 @@ struct TreeWebView: NSViewRepresentable {
             coord.pendingWordDataJSON = wordDataJSON
             coord.pendingUniqueWords = uniqueWords
             coord.pendingTotalWords = totalWords
+            coord.pendingStrataJSON = strataJSON
             coord.tryInit()
         }
 
@@ -47,6 +49,7 @@ struct TreeWebView: NSViewRepresentable {
         var pendingWordDataJSON: String = "[]"
         var pendingUniqueWords: Int = 0
         var pendingTotalWords: Int = 0
+        var pendingStrataJSON: String = "[]"
 
         func userContentController(
             _ userContentController: WKUserContentController,
@@ -62,7 +65,7 @@ struct TreeWebView: NSViewRepresentable {
             guard pageReady, !introStarted, pendingWordDataJSON != "[]", let webView else { return }
             introStarted = true
             webView.evaluateJavaScript(
-                "if(window.initTreeWords) window.initTreeWords(\(pendingWordDataJSON), \(pendingUniqueWords), \(pendingTotalWords))",
+                "if(window.initTreeWords) window.initTreeWords(\(pendingWordDataJSON), \(pendingUniqueWords), \(pendingTotalWords), \(pendingStrataJSON))",
                 completionHandler: nil
             )
         }

@@ -111,7 +111,8 @@ struct TreeContainerView: View {
                 growthProgress: appState.treeData.growthProgress,
                 wordDataJSON: appState.treeWordDataJSON,
                 uniqueWords: appState.uniqueWords,
-                totalWords: appState.totalWords
+                totalWords: appState.totalWords,
+                strataJSON: appState.treeStrataJSON
             )
         }
         .background(.black)

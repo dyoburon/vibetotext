@@ -286,15 +286,18 @@ const bloomMat = new THREE.PointsMaterial({
 let leaves = null, blooms = null;
 let leafPositions = [], bloomPositions = [];
 let maxTreeY = 0;
+let leafStartPerLevel = []; // tracks which leaf indices belong to each trunk level
+let fruitMeshes = [];
 
 // ══════════════════════════════════════════
-// ── MASSIVE TREE GENERATION ──
+// ── STRATA-DRIVEN TREE GENERATION ──
 // ══════════════════════════════════════════
 
-function generateTree(seed, uniqueWords) {
+function generateTree(seed, uniqueWords, strata) {
     const rng = mulberry32(seed);
     leafPositions = [];
     bloomPositions = [];
+    leafStartPerLevel = [];
     maxTreeY = 0;
 
     // ── Scale with word count ──
@@ -310,8 +313,16 @@ function generateTree(seed, uniqueWords) {
     const LEAF_PER_TIP = 20;
     const LEAF_PER_PENULT = 8;
 
-    // ── Recursive branch builder ──
-    function addBranch(start, dir, len, radius, depth) {
+    // Compute per-level frequency ratio from strata
+    const maxStratumFreq = Math.max(1, ...strata.map(s => s.totalFreq || 0));
+    function getFreqRatio(lvl) {
+        if (!strata[lvl]) return 0.5;
+        const raw = (strata[lvl].totalFreq || 0) / maxStratumFreq;
+        return Math.max(0.25, Math.sqrt(raw)); // sqrt compresses extreme range
+    }
+
+    // ── Recursive branch builder (fr = frequency ratio 0..1) ──
+    function addBranch(start, dir, len, radius, depth, fr) {
         if (depth > SUB_DEPTH || radius < 0.003) return;
         const end = new THREE.Vector3().copy(start).addScaledVector(dir, len);
         const topR = radius * 0.7;
@@ -326,10 +337,11 @@ function generateTree(seed, uniqueWords) {
 
         if (end.y > maxTreeY) maxTreeY = end.y;
 
-        // Leaves at tip and penultimate depths
         if (depth >= SUB_DEPTH - 1) {
-            const count = depth === SUB_DEPTH ? LEAF_PER_TIP : LEAF_PER_PENULT;
-            const spread = depth === SUB_DEPTH ? 0.5 : 0.7;
+            // Leaf count scales with frequency ratio: high-freq branches get denser foliage
+            const baseTip = depth === SUB_DEPTH ? LEAF_PER_TIP : LEAF_PER_PENULT;
+            const count = Math.round(baseTip * (0.4 + fr * 0.8));
+            const spread = (depth === SUB_DEPTH ? 0.5 : 0.7) * (0.6 + fr * 0.5);
             for (let i = 0; i < count; i++) {
                 const lx = end.x + (rng() - 0.5) * spread;
                 const ly = end.y + (rng() - 0.5) * spread;
@@ -342,7 +354,6 @@ function generateTree(seed, uniqueWords) {
             bloomPositions.push(end.x, end.y + rng() * 0.1, end.z);
         }
 
-        // Children
         const children = rng() > 0.35 ? 3 : 2;
         for (let i = 0; i < children; i++) {
             const spreadAngle = 0.25 + rng() * 0.45;
@@ -354,12 +365,12 @@ function generateTree(seed, uniqueWords) {
             nd.applyAxisAngle(perp, spreadAngle);
             nd.applyAxisAngle(dir, twist);
             nd.normalize();
-            addBranch(end, nd, len * (0.58 + rng() * 0.14), topR * (0.55 + rng() * 0.15), depth + 1);
+            addBranch(end, nd, len * (0.58 + rng() * 0.14), topR * (0.55 + rng() * 0.15), depth + 1, fr);
         }
     }
 
-    // ── Build trunk segments ──
-    const branchStartLevel = Math.floor(trunkLevels * 0.3);
+    // ── Build trunk segments (strata-driven) ──
+    const branchStartLevel = Math.floor(trunkLevels * 0.25);
     for (let lvl = 0; lvl < trunkLevels; lvl++) {
         const y0 = lvl * segHeight;
         const y1 = (lvl + 1) * segHeight;
@@ -367,7 +378,6 @@ function generateTree(seed, uniqueWords) {
         let botR = baseRadius * taper;
         let topR = botR * 0.88;
 
-        // Flared base
         if (lvl === 0) botR = baseRadius * 1.4;
 
         const geo = new THREE.CylinderGeometry(topR, botR, segHeight, 12, 1);
@@ -376,36 +386,45 @@ function generateTree(seed, uniqueWords) {
         scene.add(mesh);
         if (y1 > maxTreeY) maxTreeY = y1;
 
-        // Branch clusters
+        // Track leaf range for this level
+        leafStartPerLevel.push(leafPositions.length / 3);
+
+        // Branch clusters driven by stratum frequency
         if (lvl >= branchStartLevel) {
-            const branchCount = 3 + Math.floor(rng() * 2); // 3-4
+            const fr = getFreqRatio(lvl);
+            // High freq → many wide branches, low freq → fewer thinner ones
+            const branchCount = Math.max(3, 3 + Math.round(fr * 4));
+            const lenMult = 0.8 + fr * 1.6;
+
             for (let b = 0; b < branchCount; b++) {
                 const angle = (b / branchCount) * Math.PI * 2 + rng() * 0.7;
-                const outward = 0.6 + rng() * 0.3;
-                const upward = 0.15 + rng() * 0.35;
+                const outward = 0.35 + fr * 0.65 + rng() * 0.15;
+                const upward = 0.1 + rng() * 0.3;
                 const dir = new THREE.Vector3(
                     Math.sin(angle) * outward, upward, Math.cos(angle) * outward
                 ).normalize();
                 const branchY = y0 + segHeight * (0.3 + rng() * 0.5);
-                const branchLen = segHeight * (0.5 + rng() * 0.4) * taper;
-                const branchRad = topR * (0.25 + rng() * 0.15);
-                addBranch(new THREE.Vector3(0, branchY, 0), dir, branchLen, branchRad, 0);
+                const branchLen = segHeight * lenMult * taper * (0.4 + rng() * 0.5);
+                const branchRad = topR * (0.3 + fr * 0.6 + rng() * 0.1);
+                addBranch(new THREE.Vector3(0, branchY, 0), dir, branchLen, branchRad, 0, fr);
             }
         }
     }
 
-    // ── Crown (dense canopy at top) ──
+    // ── Crown (newest words, last stratum - narrower) ──
+    leafStartPerLevel.push(leafPositions.length / 3); // end marker for last trunk level
     const crownY = trunkLevels * segHeight;
+    const crownFr = getFreqRatio(trunkLevels - 1);
     const crownR = baseRadius * 0.45 * (1 - (trunkLevels - 1) / trunkLevels * 0.55) * 0.88;
-    const crownCount = 6 + Math.floor(rng() * 3); // 6-8
+    const crownCount = 5 + Math.floor(rng() * 3);
     for (let b = 0; b < crownCount; b++) {
         const angle = (b / crownCount) * Math.PI * 2 + rng() * 0.4;
-        const spread = 0.3 + rng() * 0.3;
+        const spread = 0.2 + crownFr * 0.3 + rng() * 0.2;
         const dir = new THREE.Vector3(
             Math.sin(angle) * spread, 0.6 + rng() * 0.4, Math.cos(angle) * spread
         ).normalize();
-        const len = segHeight * (0.7 + rng() * 0.5);
-        addBranch(new THREE.Vector3(0, crownY, 0), dir, len, Math.max(crownR, 0.06), 0);
+        const len = segHeight * (0.5 + crownFr * 0.5 + rng() * 0.3);
+        addBranch(new THREE.Vector3(0, crownY, 0), dir, len, Math.max(crownR, 0.06), 0, crownFr);
     }
 
     // ── Buttress roots ──
@@ -577,6 +596,7 @@ function skipToDone() {
     barkMat.clippingPlanes = [];
     leafMat.clippingPlanes = [];
     bloomMat.clippingPlanes = [];
+    for (const m of fruitMeshes) m.material.clippingPlanes = [];
     dirLight.intensity = TARGET_DIR;
     ambient.intensity = TARGET_AMB;
     hemiLight.intensity = TARGET_HEMI;
@@ -587,29 +607,85 @@ function skipToDone() {
     glowMat.opacity = 0.25;
 }
 
+// ── Fruit placement for milestone words ──
+function placeFruit(fruitByTier) {
+    for (const m of fruitMeshes) scene.remove(m);
+    fruitMeshes = [];
+
+    const tiers = [
+        { indices: fruitByTier.tier1, radius: 0.07, color: 0xcc2211, emissive: 0x220000 },
+        { indices: fruitByTier.tier2, radius: 0.11, color: 0xff7700, emissive: 0x331100 },
+        { indices: fruitByTier.tier3, radius: 0.16, color: 0xffcc00, emissive: 0x554400 },
+    ];
+    const dummy = new THREE.Object3D();
+    for (const tier of tiers) {
+        if (tier.indices.length === 0) continue;
+        const geo = new THREE.SphereGeometry(tier.radius, 8, 8);
+        const mat = new THREE.MeshStandardMaterial({
+            color: tier.color, emissive: tier.emissive,
+            roughness: 0.3, metalness: 0.15,
+            clippingPlanes: [growthClip]
+        });
+        const mesh = new THREE.InstancedMesh(geo, mat, tier.indices.length);
+        for (let i = 0; i < tier.indices.length; i++) {
+            const li = tier.indices[i];
+            dummy.position.set(
+                leafPositions[li * 3],
+                leafPositions[li * 3 + 1] - tier.radius * 0.5,
+                leafPositions[li * 3 + 2]
+            );
+            dummy.updateMatrix();
+            mesh.setMatrixAt(i, dummy.matrix);
+        }
+        mesh.instanceMatrix.needsUpdate = true;
+        scene.add(mesh);
+        fruitMeshes.push(mesh);
+    }
+}
+
 // ── Main API ──
-window.initTreeWords = function(wordData, uniqueWords, totalWords) {
+window.initTreeWords = function(wordData, uniqueWords, totalWords, strata) {
     uniqueWords = uniqueWords || wordData.length;
     totalWords = totalWords || wordData.reduce((s, w) => s + w.count, 0);
+    strata = strata || [];
 
-    // Generate massive tree
-    generateTree(42, uniqueWords);
+    // Generate strata-driven tree
+    generateTree(42, uniqueWords, strata);
 
-    // Assign words to leaves
+    // Sort words by firstSeen (oldest first = bottom of tree)
+    const sorted = [...wordData].sort((a, b) => (a.firstSeenTS || 0) - (b.firstSeenTS || 0));
+
+    // Sort leaf indices by Y position (lowest first)
     const totalLeaves = leafPositions.length / 3;
-    const totalCount = wordData.reduce((s, w) => s + w.count, 0);
-    let idx = 0;
-    for (const wd of wordData) {
+    const leafIndices = Array.from({length: totalLeaves}, (_, i) => i);
+    leafIndices.sort((a, b) => leafPositions[a * 3 + 1] - leafPositions[b * 3 + 1]);
+
+    // Assign words to leaves: oldest words → lowest leaves, freq determines spread
+    const totalCount = sorted.reduce((s, w) => s + w.count, 0);
+    let leafIdx = 0;
+    for (const wd of sorted) {
         const share = Math.max(1, Math.round((wd.count / totalCount) * totalLeaves));
-        for (let j = 0; j < share && idx < totalLeaves; j++) {
-            leafWords[idx] = wd;
-            idx++;
+        for (let j = 0; j < share && leafIdx < totalLeaves; j++) {
+            leafWords[leafIndices[leafIdx]] = wd;
+            leafIdx++;
         }
     }
-    while (idx < totalLeaves) {
-        leafWords[idx] = wordData[idx % wordData.length];
-        idx++;
+    while (leafIdx < totalLeaves) {
+        leafWords[leafIndices[leafIdx]] = sorted[leafIdx % sorted.length];
+        leafIdx++;
     }
+
+    // Place fruit at milestone word leaves (one per word)
+    const fruitPlaced = new Set();
+    const fruitByTier = { tier1: [], tier2: [], tier3: [] };
+    for (let i = 0; i < totalLeaves; i++) {
+        const wd = leafWords[i];
+        if (!wd || fruitPlaced.has(wd.word)) continue;
+        if (wd.count >= 1000) { fruitByTier.tier3.push(i); fruitPlaced.add(wd.word); }
+        else if (wd.count >= 500) { fruitByTier.tier2.push(i); fruitPlaced.add(wd.word); }
+        else if (wd.count >= 100) { fruitByTier.tier1.push(i); fruitPlaced.add(wd.word); }
+    }
+    placeFruit(fruitByTier);
 
     // Start simultaneous rain + growth
     if (introPhase === 'waiting') {
@@ -620,7 +696,7 @@ window.initTreeWords = function(wordData, uniqueWords, totalWords) {
 // Fallback
 setTimeout(() => {
     if (introPhase === 'waiting') {
-        generateTree(42, 50);
+        generateTree(42, 50, []);
         skipToDone();
     }
 }, 8000);
@@ -737,6 +813,7 @@ function animate() {
             barkMat.clippingPlanes = [];
             leafMat.clippingPlanes = [];
             bloomMat.clippingPlanes = [];
+            for (const m of fruitMeshes) m.material.clippingPlanes = [];
         }
     }
 

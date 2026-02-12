@@ -38,3 +38,6 @@ launcher.c
 
 # Electron history app
 history-app/node_modules/
+
+# Swift native app build artifacts
+native-app/.build/

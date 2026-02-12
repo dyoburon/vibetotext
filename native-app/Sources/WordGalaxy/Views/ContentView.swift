@@ -2,6 +2,7 @@ import SwiftUI
 
 enum NavDestination: Hashable {
     case galaxy
+    case tree
     case history(mode: String?)
     case entryDetail(TranscriptionEntry)
 }
@@ -17,6 +18,8 @@ struct ContentView: View {
             switch selection {
             case .galaxy:
                 GalaxyContainerView()
+            case .tree:
+                TreeContainerView()
             case .history(let mode):
                 HistoryListView(mode: mode)
             case .entryDetail(let entry):

@@ -10,6 +10,9 @@ struct SidebarView: View {
                 NavigationLink(value: NavDestination.galaxy) {
                     Label("Word Galaxy", systemImage: "sparkles")
                 }
+                NavigationLink(value: NavDestination.tree) {
+                    Label("Frequency Tree", systemImage: "leaf")
+                }
                 NavigationLink(value: NavDestination.history(mode: nil)) {
                     Label("All History", systemImage: "clock")
                 }

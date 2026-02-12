@@ -38,7 +38,6 @@ class AudioRecorder:
         self.recording = False
         self.audio_queue = queue.Queue()
         self._audio_data = []
-        self._stream_error = None  # Set if device error during recording
         self.on_level = None  # Callback for audio level updates
         self._prev_levels = np.zeros(self.NUM_BARS)  # For smoothing
 
@@ -51,9 +50,6 @@ class AudioRecorder:
         """
         if not self.recording:
             return  # Exit early if not recording (helps with clean shutdown)
-
-        if status:
-            self._stream_error = str(status)
 
         self._audio_data.append(indata.copy())
 
@@ -115,7 +111,6 @@ class AudioRecorder:
         """Start recording."""
         _log("START: Beginning recording")
         self._audio_data = []
-        self._stream_error = None
         self._prev_levels = np.zeros(self.NUM_BARS)
         self.recording = True
 
@@ -134,40 +129,14 @@ class AudioRecorder:
             _log(f"START: Could not query device info: {e}")
             print(f"[AUDIO] Could not query device info: {e}")
 
-        try:
-            self.stream = sd.InputStream(
-                samplerate=self.sample_rate,
-                channels=1,
-                dtype=np.float32,
-                callback=self._callback,
-                device=self.device,
-            )
-            self.stream.start()
-        except Exception as e:
-            _log(f"START: Stream open failed: {e}, retrying with refreshed devices...")
-            print(f"[AUDIO] Stream failed, refreshing devices and retrying...")
-            sd._terminate()
-            sd._initialize()
-            # Try to find the same device by name
-            if self.device is not None:
-                try:
-                    old_name = sd.query_devices(self.device)['name']
-                except Exception:
-                    old_name = None
-                if old_name:
-                    for i, dev in enumerate(sd.query_devices()):
-                        if dev['name'] == old_name and dev['max_input_channels'] > 0:
-                            _log(f"START: Found device '{old_name}' at new index {i}")
-                            self.device = i
-                            break
-            self.stream = sd.InputStream(
-                samplerate=self.sample_rate,
-                channels=1,
-                dtype=np.float32,
-                callback=self._callback,
-                device=self.device,
-            )
-            self.stream.start()
+        self.stream = sd.InputStream(
+            samplerate=self.sample_rate,
+            channels=1,
+            dtype=np.float32,
+            callback=self._callback,
+            device=self.device,
+        )
+        self.stream.start()
         _log("START: Stream started successfully")
 
     def stop(self) -> np.ndarray:
@@ -176,14 +145,14 @@ class AudioRecorder:
         self.recording = False
 
         # Stop stream with timeout detection
-        _log("STOP: Calling stream.abort()...")
+        _log("STOP: Calling stream.stop()...")
         stop_start = time.time()
         try:
-            self.stream.abort()
+            self.stream.stop()
             stop_elapsed = time.time() - stop_start
-            _log(f"STOP: stream.abort() completed in {stop_elapsed:.3f}s")
+            _log(f"STOP: stream.stop() completed in {stop_elapsed:.3f}s")
         except Exception as e:
-            _log(f"STOP: stream.abort() FAILED: {e}")
+            _log(f"STOP: stream.stop() FAILED: {e}")
 
         _log("STOP: Calling stream.close()...")
         close_start = time.time()
@@ -193,10 +162,6 @@ class AudioRecorder:
             _log(f"STOP: stream.close() completed in {close_elapsed:.3f}s")
         except Exception as e:
             _log(f"STOP: stream.close() FAILED: {e}")
-
-        if self._stream_error:
-            _log(f"STOP: Stream error during recording: {self._stream_error}")
-            print(f"[AUDIO] Device error during recording: {self._stream_error}")
 
         if not self._audio_data:
             _log("STOP: No audio data captured!")
@@ -215,34 +180,6 @@ class AudioRecorder:
         print(f"[AUDIO] Max amplitude: {max_amplitude:.4f}, RMS: {rms:.6f}")
 
         return audio
-
-
-class _WorkerQueue:
-    """Single-threaded work queue — keeps heavy work off the pynput listener thread.
-
-    All on_start/on_stop callbacks run here so the pynput thread is never blocked.
-    """
-
-    def __init__(self):
-        self._queue = queue.Queue()
-        self._thread = threading.Thread(target=self._run, daemon=True, name="vibetotext-worker")
-        self._thread.start()
-
-    def submit(self, fn, *args):
-        _log(f"WORKER: Queued {fn.__name__}(args={args})")
-        self._queue.put((fn, args))
-
-    def _run(self):
-        while True:
-            fn, args = self._queue.get()
-            _log(f"WORKER: Processing {fn.__name__}(args={args})")
-            start = time.time()
-            try:
-                fn(*args)
-            except Exception as e:
-                _log(f"WORKER: Error in {fn.__name__}: {e}")
-            elapsed = time.time() - start
-            _log(f"WORKER: {fn.__name__} completed in {elapsed:.3f}s")
 
 
 class HotkeyListener:
@@ -265,8 +202,7 @@ class HotkeyListener:
         self._recording = False
         self._active_mode = None
         self._timeout_timer = None
-        self._lock = threading.Lock()  # Protect state accessed by pynput + timer threads
-        self._worker = _WorkerQueue()  # Heavy work runs here, never on pynput thread
+        self._lock = threading.Lock()  # Prevent race condition on key release
 
     def _cancel_timeout(self):
         """Cancel any pending timeout."""
@@ -275,21 +211,16 @@ class HotkeyListener:
             self._timeout_timer = None
 
     def _timeout_stop(self):
-        """Called when recording times out (runs on Timer thread)."""
-        should_stop = False
-        mode = None
-        with self._lock:
-            if self._recording:
-                print(f"\n[TIMEOUT] Recording exceeded {self.max_recording_seconds}s, auto-stopping...")
-                mode = self._active_mode
-                self._recording = False
-                self._active_mode = None
-                self._active_parts = None
-                self._pressed.clear()
-                should_stop = True
-
-        if should_stop and self.on_stop:
-            self._worker.submit(self.on_stop, mode)
+        """Called when recording times out."""
+        if self._recording:
+            print(f"\n[TIMEOUT] Recording exceeded {self.max_recording_seconds}s, auto-stopping...")
+            mode = self._active_mode
+            self._recording = False
+            self._active_mode = None
+            self._active_parts = None
+            self._pressed.clear()
+            if self.on_stop:
+                self.on_stop(mode)
 
     def start(self, on_start, on_stop):
         """Start listening for hotkeys."""
@@ -310,38 +241,31 @@ class HotkeyListener:
             except AttributeError:
                 return
 
-            # Use lock to prevent race condition with on_release and _timeout_stop
-            # Invoke on_start OUTSIDE the lock to avoid deadlock
-            should_start = False
-            mode = None
-            with self._lock:
-                self._pressed.add(key_name)
+            self._pressed.add(key_name)
 
-                # Check if any hotkey combo is pressed (check longer combos first)
-                if not self._recording:
-                    # Sort by length descending to match most specific first
-                    for mode, parts in sorted(self._parsed_hotkeys.items(),
-                                              key=lambda x: len(x[1]), reverse=True):
-                        if parts.issubset(self._pressed):
-                            self._recording = True
-                            self._active_mode = mode
-                            self._active_parts = parts
-                            _log(f"HOTKEY: Pressed {key_name}, starting recording mode={mode}")
+            # Check if any hotkey combo is pressed (check longer combos first)
+            if not self._recording:
+                # Sort by length descending to match most specific first
+                for mode, parts in sorted(self._parsed_hotkeys.items(),
+                                          key=lambda x: len(x[1]), reverse=True):
+                    if parts.issubset(self._pressed):
+                        self._recording = True
+                        self._active_mode = mode
+                        self._active_parts = parts
+                        _log(f"HOTKEY: Pressed {key_name}, starting recording mode={mode}")
 
-                            # Start timeout timer
-                            self._cancel_timeout()
-                            self._timeout_timer = threading.Timer(
-                                self.max_recording_seconds,
-                                self._timeout_stop
-                            )
-                            self._timeout_timer.daemon = True
-                            self._timeout_timer.start()
+                        # Start timeout timer
+                        self._cancel_timeout()
+                        self._timeout_timer = threading.Timer(
+                            self.max_recording_seconds,
+                            self._timeout_stop
+                        )
+                        self._timeout_timer.daemon = True
+                        self._timeout_timer.start()
 
-                            should_start = True
-                            break
-
-            if should_start and self.on_start:
-                self._worker.submit(self.on_start, mode)
+                        if self.on_start:
+                            self.on_start(mode)
+                        break
 
         def on_release(key):
             try:
@@ -371,7 +295,11 @@ class HotkeyListener:
                 _log(f"HOTKEY: Released {key_name}, stopping recording mode={mode}")
                 print(f"[HOTKEY] Stopping recording, mode={mode}")
                 if self.on_stop:
-                    self._worker.submit(self.on_stop, mode)
+                    _log(f"HOTKEY: Calling on_stop callback...")
+                    stop_start = time.time()
+                    self.on_stop(mode)
+                    stop_elapsed = time.time() - stop_start
+                    _log(f"HOTKEY: on_stop callback completed in {stop_elapsed:.3f}s")
 
         self.listener = keyboard.Listener(on_press=on_press, on_release=on_release)
         self.listener.start()

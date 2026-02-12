@@ -20,13 +20,6 @@ from .history_ui import toggle_history, refresh_history
 
 
 def main():
-    # Redirect stdout/stderr to debug log file so print() never hits a broken pipe.
-    # This process runs as a background daemon, so terminal output is useless anyway.
-    _log_path = os.path.join(tempfile.gettempdir(), "vibetotext_debug.log")
-    _log_file = open(_log_path, "a", buffering=1)  # line-buffered
-    sys.stdout = _log_file
-    sys.stderr = _log_file
-
     parser = argparse.ArgumentParser(
         description="Voice-to-text with automatic code context injection"
     )

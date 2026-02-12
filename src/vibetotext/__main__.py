@@ -9,7 +9,7 @@ import time
 import traceback
 from pathlib import Path
 
-from vibetotext.recorder import AudioRecorder, HotkeyListener, _log
+from vibetotext.recorder import AudioRecorder, HotkeyListener
 from vibetotext.transcriber import Transcriber
 from vibetotext.context import search_context, format_context
 from vibetotext.greppy import search_files, format_files_for_context
@@ -183,9 +183,7 @@ def main():
             if ui:
                 ui.show_recording()
             recorder.start()
-        except Exception as e:
-            print(f"\n[ERROR] Failed to start recording: {e}")
-            print(f"[ERROR] Full traceback logged to: {os.path.join(tempfile.gettempdir(), 'vibetotext_crash.log')}")
+        except Exception:
             error_log = os.path.join(tempfile.gettempdir(), "vibetotext_crash.log")
             error_msg = f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Error in on_start (mode={mode}):\n"
             error_msg += traceback.format_exc()
@@ -193,41 +191,27 @@ def main():
             with open(error_log, "a") as f:
                 f.write(error_msg + "\n")
 
-            if ui:
-                try:
-                    ui.hide_recording()
-                except Exception:
-                    pass
-
     def on_stop(mode):
         try:
-            _log(f"ON_STOP: Start (mode={mode})")
-            t0 = time.time()
-
             # History mode: nothing to do on release
             if mode == "history":
                 return
 
             audio = recorder.stop()
-            _log(f"ON_STOP: recorder.stop() done in {time.time() - t0:.3f}s")
 
             if ui:
                 ui.hide_recording()
 
             if len(audio) == 0:
-                _log("ON_STOP: No audio, returning early")
                 return
 
             # Calculate audio duration for stats
             duration_seconds = len(audio) / 16000  # Sample rate is 16000
 
             # Transcribe
-            t1 = time.time()
             text = transcriber.transcribe(audio)
-            _log(f"ON_STOP: transcribe() done in {time.time() - t1:.3f}s")
 
             if not text:
-                _log("ON_STOP: Empty transcription, returning early")
                 return
 
             # Filter out Whisper blank audio / silence markers
@@ -239,7 +223,6 @@ def main():
                 "[no speech]", "[ no speech ]", "(no speech)", "( no speech )",
             )
             if text_lower in noise_markers:
-                _log("ON_STOP: Noise marker detected, returning early")
                 return
 
             if mode == "greppy":
@@ -264,19 +247,12 @@ def main():
                 output = text
 
             # Save to history with duration for WPM calculation
-            t2 = time.time()
             history.add_entry(text, mode, duration_seconds=duration_seconds)
-            _log(f"ON_STOP: history.add_entry() done in {time.time() - t2:.3f}s")
 
             # Paste at cursor
-            t3 = time.time()
             paste_at_cursor(output)
-            _log(f"ON_STOP: paste_at_cursor() done in {time.time() - t3:.3f}s")
-            _log(f"ON_STOP: Total elapsed {time.time() - t0:.3f}s")
 
-        except Exception as e:
-            print(f"\n[ERROR] Recording failed: {e}")
-            print(f"[ERROR] Full traceback logged to: {os.path.join(tempfile.gettempdir(), 'vibetotext_crash.log')}")
+        except Exception:
             # Log error to file
             error_log = os.path.join(tempfile.gettempdir(), "vibetotext_crash.log")
             error_msg = f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Error in on_stop (mode={mode}):\n"

@@ -15,6 +15,10 @@ final class AppState: ObservableObject {
     @Published var averageWPM = 0
     @Published var uniqueWords = 0
 
+    // Tree data
+    @Published var treeData = TreeData.placeholder
+    @Published var treeWordDataJSON: String = "[]"
+
     private let db = DatabaseManager()
     private var fileMonitor: DispatchSourceFileSystemObject?
     private var audioTimer: Timer?
@@ -39,6 +43,17 @@ final class AppState: ObservableObject {
             let wpms = entries.compactMap(\.wpm).filter { $0 > 0 }
             let avgWPM = wpms.isEmpty ? 0 : wpms.reduce(0, +) / wpms.count
 
+            let treeData = TreeDataCalculator.calculate(from: entries)
+
+            let formatter = DateFormatter()
+            formatter.dateFormat = "MMM d, yyyy"
+            let wordDataArray = frequencies.prefix(300).enumerated().map { i, wf -> [String: Any] in
+                ["word": wf.word, "count": wf.count,
+                 "firstSeen": formatter.string(from: wf.firstSeen), "rank": i + 1]
+            }
+            let treeWordDataJSON = (try? JSONSerialization.data(withJSONObject: wordDataArray))
+                .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
+
             DispatchQueue.main.async {
                 self.entries = entries
                 self.wordFrequencies = frequencies
@@ -47,6 +62,8 @@ final class AppState: ObservableObject {
                 self.totalWords = totalWords
                 self.averageWPM = avgWPM
                 self.uniqueWords = frequencies.count
+                self.treeData = treeData
+                self.treeWordDataJSON = treeWordDataJSON
                 self.isLoading = false
             }
         }

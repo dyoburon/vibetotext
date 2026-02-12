@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+    * { margin: 0; padding: 0; }
+    body { overflow: hidden; background: #000; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+    canvas { display: block; }
+
+    #popup {
+        display: none;
+        position: fixed;
+        background: rgba(8, 8, 18, 0.92);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 14px;
+        padding: 18px 22px;
+        color: white;
+        min-width: 200px;
+        max-width: 280px;
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+        z-index: 100;
+        animation: popIn 0.15s ease-out;
+    }
+    @keyframes popIn {
+        from { transform: scale(0.9); opacity: 0; }
+        to { transform: scale(1); opacity: 1; }
+    }
+    #popup .close-btn {
+        position: absolute; top: 10px; right: 14px;
+        cursor: pointer; opacity: 0.4; font-size: 18px;
+        line-height: 1; transition: opacity 0.15s;
+    }
+    #popup .close-btn:hover { opacity: 1; }
+    #popup .word-title {
+        font-size: 24px; font-weight: 700;
+        font-family: 'SF Mono', 'Menlo', monospace;
+        color: #66cc44; margin-bottom: 14px;
+    }
+    #popup .stat-row {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 6px 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    }
+    #popup .stat-row:last-child { border-bottom: none; }
+    #popup .stat-label {
+        font-size: 11px; color: rgba(255, 255, 255, 0.45);
+        text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    #popup .stat-value {
+        font-size: 14px; font-weight: 600;
+        font-family: 'SF Mono', 'Menlo', monospace;
+    }
+    #popup .stat-value.count { color: #fbbd23; }
+    #popup .stat-value.rank { color: #66cc44; }
+    #popup .stat-value.date { color: #88aacc; }
+
+    #rain-counter {
+        display: none;
+        position: fixed;
+        bottom: 80px;
+        left: 50%;
+        transform: translateX(-50%);
+        text-align: center;
+        z-index: 50;
+        pointer-events: none;
+    }
+    #counter-number {
+        font-size: 72px;
+        font-weight: 800;
+        font-family: 'SF Mono', 'Menlo', monospace;
+        color: #fff;
+        text-shadow: 0 0 20px rgba(60, 140, 255, 0.6), 0 0 50px rgba(60, 140, 255, 0.3);
+        letter-spacing: 2px;
+        line-height: 1;
+    }
+    #counter-label {
+        font-size: 13px;
+        font-weight: 500;
+        color: rgba(255, 255, 255, 0.5);
+        text-transform: uppercase;
+        letter-spacing: 4px;
+        margin-top: 6px;
+    }
+</style>
+</head>
+<body>
+
+<div id="popup">
+    <span class="close-btn" onclick="hidePopup()">&times;</span>
+    <div class="word-title" id="popup-word"></div>
+    <div class="stat-row">
+        <span class="stat-label">Times used</span>
+        <span class="stat-value count" id="popup-count"></span>
+    </div>
+    <div class="stat-row">
+        <span class="stat-label">Frequency rank</span>
+        <span class="stat-value rank" id="popup-rank"></span>
+    </div>
+    <div class="stat-row">
+        <span class="stat-label">First seen</span>
+        <span class="stat-value date" id="popup-date"></span>
+    </div>
+</div>
+
+<div id="rain-counter">
+    <div id="counter-number">0</div>
+    <div id="counter-label">words transcribed</div>
+</div>
+
+<script type="importmap">
+{
+    "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/"
+    }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ── Utilities ──
+function mulberry32(a) {
+    return function() {
+        a |= 0; a = a + 0x6D2B79F5 | 0;
+        let t = Math.imul(a ^ a >>> 15, 1 | a);
+        t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+        return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+}
+function smoothstep(t) { return t * t * (3 - 2 * t); }
+function easeOut(t) { return t * (2 - t); }
+
+// ── Scene ──
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x88aabb, 0.008);
+
+const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 500);
+camera.position.set(20, 14, 28);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
+renderer.localClippingEnabled = true;
+document.body.appendChild(renderer.domElement);
+
+// ── Controls ──
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.05;
+controls.autoRotate = true;
+controls.autoRotateSpeed = 0.25;
+controls.target.set(0, 8, 0);
+controls.minDistance = 3;
+controls.maxDistance = 80;
+controls.maxPolarAngle = Math.PI * 0.85;
+
+// ── Sky (bright daytime blue) ──
+const skyGeo = new THREE.SphereGeometry(150, 32, 16);
+const skyUniforms = {
+    topColor:    { value: new THREE.Color(0x1a55aa) },
+    midColor:    { value: new THREE.Color(0x4499dd) },
+    bottomColor: { value: new THREE.Color(0xddbb88) },
+    brightness:  { value: 0.55 },
+};
+const skyMat = new THREE.ShaderMaterial({
+    uniforms: skyUniforms,
+    vertexShader: `
+        varying vec3 vWorldPosition;
+        void main() {
+            vec4 worldPos = modelMatrix * vec4(position, 1.0);
+            vWorldPosition = worldPos.xyz;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    `,
+    fragmentShader: `
+        uniform vec3 topColor;
+        uniform vec3 midColor;
+        uniform vec3 bottomColor;
+        uniform float brightness;
+        varying vec3 vWorldPosition;
+        void main() {
+            float h = normalize(vWorldPosition).y;
+            vec3 col;
+            if (h > 0.0) col = mix(midColor, topColor, h);
+            else col = mix(midColor, bottomColor, -h * 2.0);
+            gl_FragColor = vec4(col * brightness, 1.0);
+        }
+    `,
+    side: THREE.BackSide,
+    depthWrite: false
+});
+scene.add(new THREE.Mesh(skyGeo, skyMat));
+
+// ── Stars (faint in daytime) ──
+const starRng = mulberry32(999);
+const starCount = 300;
+const starPositions = new Float32Array(starCount * 3);
+for (let i = 0; i < starCount; i++) {
+    const theta = starRng() * Math.PI * 2;
+    const phi = starRng() * Math.PI * 0.4;
+    const r = 100 + starRng() * 20;
+    starPositions[i * 3]     = r * Math.sin(phi) * Math.cos(theta);
+    starPositions[i * 3 + 1] = r * Math.cos(phi);
+    starPositions[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
+}
+const starGeo = new THREE.BufferGeometry();
+starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starPositions, 3));
+const starMat = new THREE.PointsMaterial({
+    size: 0.4, color: 0xffffff, transparent: true, opacity: 0.0,
+    sizeAttenuation: true, depthWrite: false
+});
+scene.add(new THREE.Points(starGeo, starMat));
+
+// ── Lights (daytime cloudy during rain, bright after) ──
+const TARGET_DIR = 2.2, TARGET_AMB = 0.7, TARGET_HEMI = 0.6, TARGET_RIM = 0.35;
+const RAIN_FRAC = 0.5; // lights start at 50% of target during rain
+
+const ambient = new THREE.AmbientLight(0x5588aa, TARGET_AMB * RAIN_FRAC);
+scene.add(ambient);
+const dirLight = new THREE.DirectionalLight(0xffeedd, TARGET_DIR * RAIN_FRAC);
+dirLight.position.set(8, 20, 10);
+scene.add(dirLight);
+const hemiLight = new THREE.HemisphereLight(0x6699cc, 0x443322, TARGET_HEMI * RAIN_FRAC);
+scene.add(hemiLight);
+const rimLight = new THREE.DirectionalLight(0x5577aa, TARGET_RIM * RAIN_FRAC);
+rimLight.position.set(-5, 6, -8);
+scene.add(rimLight);
+
+// ── Growth clip plane ──
+const growthClip = new THREE.Plane(new THREE.Vector3(0, -1, 0), 0.01);
+
+// ── Ground ──
+const groundGeo = new THREE.CircleGeometry(50, 64);
+const groundMat = new THREE.MeshStandardMaterial({ color: 0x1a2a0e, roughness: 1.0, metalness: 0.0 });
+const ground = new THREE.Mesh(groundGeo, groundMat);
+ground.rotation.x = -Math.PI / 2;
+ground.position.y = -0.02;
+scene.add(ground);
+
+const glowGeo = new THREE.RingGeometry(0.5, 4.0, 32);
+const glowMat = new THREE.MeshBasicMaterial({ color: 0x2a4a1a, transparent: true, opacity: 0.0, side: THREE.DoubleSide });
+const glowRing = new THREE.Mesh(glowGeo, glowMat);
+glowRing.rotation.x = -Math.PI / 2;
+glowRing.position.y = 0.01;
+scene.add(glowRing);
+
+// ── Fireflies ──
+const fireflyRng = mulberry32(777);
+const fireflyCount = 60;
+const fireflyBasePositions = new Float32Array(fireflyCount * 3);
+for (let i = 0; i < fireflyCount; i++) {
+    fireflyBasePositions[i * 3]     = (fireflyRng() - 0.5) * 20;
+    fireflyBasePositions[i * 3 + 1] = 1 + fireflyRng() * 25;
+    fireflyBasePositions[i * 3 + 2] = (fireflyRng() - 0.5) * 20;
+}
+const fireflyGeo = new THREE.BufferGeometry();
+fireflyGeo.setAttribute('position', new THREE.Float32BufferAttribute(fireflyBasePositions.slice(), 3));
+const fireflyMat = new THREE.PointsMaterial({
+    size: 0.1, color: 0xccff88, transparent: true, opacity: 0.0,
+    blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true
+});
+scene.add(new THREE.Points(fireflyGeo, fireflyMat));
+
+// ── Materials ──
+const barkMat = new THREE.MeshStandardMaterial({
+    color: 0x4a2810, roughness: 0.92, metalness: 0.0,
+    clippingPlanes: [growthClip]
+});
+const leafMat = new THREE.PointsMaterial({
+    size: 0.10, color: 0x55bb33, transparent: true, opacity: 0.85,
+    sizeAttenuation: true, depthWrite: false, blending: THREE.NormalBlending,
+    clippingPlanes: [growthClip]
+});
+const bloomMat = new THREE.PointsMaterial({
+    size: 0.16, color: 0xffccdd, transparent: true, opacity: 0.9,
+    sizeAttenuation: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    clippingPlanes: [growthClip]
+});
+
+// ── Tree state ──
+let leaves = null, blooms = null;
+let leafPositions = [], bloomPositions = [];
+let maxTreeY = 0;
+
+// ══════════════════════════════════════════
+// ── MASSIVE TREE GENERATION ──
+// ══════════════════════════════════════════
+
+function generateTree(seed, uniqueWords) {
+    const rng = mulberry32(seed);
+    leafPositions = [];
+    bloomPositions = [];
+    maxTreeY = 0;
+
+    // ── Scale with word count ──
+    let trunkLevels, segHeight, baseRadius;
+    if (uniqueWords >= 5000) { trunkLevels = 10; segHeight = 2.8; baseRadius = 0.70; }
+    else if (uniqueWords >= 2000) { trunkLevels = 8;  segHeight = 2.5; baseRadius = 0.55; }
+    else if (uniqueWords >= 800)  { trunkLevels = 6;  segHeight = 2.2; baseRadius = 0.40; }
+    else if (uniqueWords >= 200)  { trunkLevels = 4;  segHeight = 2.0; baseRadius = 0.28; }
+    else if (uniqueWords >= 50)   { trunkLevels = 3;  segHeight = 1.5; baseRadius = 0.18; }
+    else                          { trunkLevels = 2;  segHeight = 1.2; baseRadius = 0.12; }
+
+    const SUB_DEPTH = 3;
+    const LEAF_PER_TIP = 20;
+    const LEAF_PER_PENULT = 8;
+
+    // ── Recursive branch builder ──
+    function addBranch(start, dir, len, radius, depth) {
+        if (depth > SUB_DEPTH || radius < 0.003) return;
+        const end = new THREE.Vector3().copy(start).addScaledVector(dir, len);
+        const topR = radius * 0.7;
+        const segs = depth === 0 ? 10 : 6;
+        const geo = new THREE.CylinderGeometry(topR, radius, len, segs, 1);
+        const mesh = new THREE.Mesh(geo, barkMat);
+        mesh.position.lerpVectors(start, end, 0.5);
+        const up = new THREE.Vector3(0, 1, 0);
+        if (Math.abs(dir.dot(up)) < 0.9999)
+            mesh.quaternion.setFromUnitVectors(up, dir.clone().normalize());
+        scene.add(mesh);
+
+        if (end.y > maxTreeY) maxTreeY = end.y;
+
+        // Leaves at tip and penultimate depths
+        if (depth >= SUB_DEPTH - 1) {
+            const count = depth === SUB_DEPTH ? LEAF_PER_TIP : LEAF_PER_PENULT;
+            const spread = depth === SUB_DEPTH ? 0.5 : 0.7;
+            for (let i = 0; i < count; i++) {
+                const lx = end.x + (rng() - 0.5) * spread;
+                const ly = end.y + (rng() - 0.5) * spread;
+                const lz = end.z + (rng() - 0.5) * spread;
+                leafPositions.push(lx, ly, lz);
+                if (ly > maxTreeY) maxTreeY = ly;
+            }
+        }
+        if (depth === SUB_DEPTH) {
+            bloomPositions.push(end.x, end.y + rng() * 0.1, end.z);
+        }
+
+        // Children
+        const children = rng() > 0.35 ? 3 : 2;
+        for (let i = 0; i < children; i++) {
+            const spreadAngle = 0.25 + rng() * 0.45;
+            const twist = (i / children) * Math.PI * 2 + (rng() - 0.5) * 0.8;
+            const nd = new THREE.Vector3().copy(dir);
+            const perp = new THREE.Vector3();
+            if (Math.abs(dir.y) < 0.9) perp.crossVectors(dir, new THREE.Vector3(0, 1, 0)).normalize();
+            else perp.crossVectors(dir, new THREE.Vector3(1, 0, 0)).normalize();
+            nd.applyAxisAngle(perp, spreadAngle);
+            nd.applyAxisAngle(dir, twist);
+            nd.normalize();
+            addBranch(end, nd, len * (0.58 + rng() * 0.14), topR * (0.55 + rng() * 0.15), depth + 1);
+        }
+    }
+
+    // ── Build trunk segments ──
+    const branchStartLevel = Math.floor(trunkLevels * 0.3);
+    for (let lvl = 0; lvl < trunkLevels; lvl++) {
+        const y0 = lvl * segHeight;
+        const y1 = (lvl + 1) * segHeight;
+        const taper = 1 - (lvl / trunkLevels) * 0.55;
+        let botR = baseRadius * taper;
+        let topR = botR * 0.88;
+
+        // Flared base
+        if (lvl === 0) botR = baseRadius * 1.4;
+
+        const geo = new THREE.CylinderGeometry(topR, botR, segHeight, 12, 1);
+        const mesh = new THREE.Mesh(geo, barkMat);
+        mesh.position.y = (y0 + y1) / 2;
+        scene.add(mesh);
+        if (y1 > maxTreeY) maxTreeY = y1;
+
+        // Branch clusters
+        if (lvl >= branchStartLevel) {
+            const branchCount = 3 + Math.floor(rng() * 2); // 3-4
+            for (let b = 0; b < branchCount; b++) {
+                const angle = (b / branchCount) * Math.PI * 2 + rng() * 0.7;
+                const outward = 0.6 + rng() * 0.3;
+                const upward = 0.15 + rng() * 0.35;
+                const dir = new THREE.Vector3(
+                    Math.sin(angle) * outward, upward, Math.cos(angle) * outward
+                ).normalize();
+                const branchY = y0 + segHeight * (0.3 + rng() * 0.5);
+                const branchLen = segHeight * (0.5 + rng() * 0.4) * taper;
+                const branchRad = topR * (0.25 + rng() * 0.15);
+                addBranch(new THREE.Vector3(0, branchY, 0), dir, branchLen, branchRad, 0);
+            }
+        }
+    }
+
+    // ── Crown (dense canopy at top) ──
+    const crownY = trunkLevels * segHeight;
+    const crownR = baseRadius * 0.45 * (1 - (trunkLevels - 1) / trunkLevels * 0.55) * 0.88;
+    const crownCount = 6 + Math.floor(rng() * 3); // 6-8
+    for (let b = 0; b < crownCount; b++) {
+        const angle = (b / crownCount) * Math.PI * 2 + rng() * 0.4;
+        const spread = 0.3 + rng() * 0.3;
+        const dir = new THREE.Vector3(
+            Math.sin(angle) * spread, 0.6 + rng() * 0.4, Math.cos(angle) * spread
+        ).normalize();
+        const len = segHeight * (0.7 + rng() * 0.5);
+        addBranch(new THREE.Vector3(0, crownY, 0), dir, len, Math.max(crownR, 0.06), 0);
+    }
+
+    // ── Buttress roots ──
+    const rootCount = 4 + Math.floor(rng() * 3);
+    for (let i = 0; i < rootCount; i++) {
+        const angle = (i / rootCount) * Math.PI * 2 + rng() * 0.4;
+        const dir = new THREE.Vector3(Math.sin(angle), -0.2, Math.cos(angle)).normalize();
+        const start = new THREE.Vector3(0, baseRadius * 0.6, 0);
+        const len = baseRadius * 2.5 + rng() * baseRadius;
+        const rad = baseRadius * 0.25;
+        const end = new THREE.Vector3().copy(start).addScaledVector(dir, len);
+        const geo = new THREE.CylinderGeometry(rad * 0.2, rad, len, 6, 1);
+        const mesh = new THREE.Mesh(geo, barkMat);
+        mesh.position.lerpVectors(start, end, 0.5);
+        const up = new THREE.Vector3(0, 1, 0);
+        if (Math.abs(dir.dot(up)) < 0.9999)
+            mesh.quaternion.setFromUnitVectors(up, dir.clone().normalize());
+        scene.add(mesh);
+    }
+
+    // ── Create Points ──
+    const leafGeo = new THREE.BufferGeometry();
+    leafGeo.setAttribute('position', new THREE.Float32BufferAttribute(leafPositions, 3));
+    leaves = new THREE.Points(leafGeo, leafMat);
+    scene.add(leaves);
+
+    const bloomGeo = new THREE.BufferGeometry();
+    bloomGeo.setAttribute('position', new THREE.Float32BufferAttribute(bloomPositions, 3));
+    blooms = new THREE.Points(bloomGeo, bloomMat);
+    scene.add(blooms);
+
+    // ── Camera for tree size ──
+    const h = maxTreeY;
+    controls.target.set(0, h * 0.35, 0);
+    camera.position.set(h * 0.8, h * 0.5, h * 1.1);
+    controls.update();
+}
+
+// ══════════════════════════════════════════
+// ── RAYCASTING & POPUP ──
+// ══════════════════════════════════════════
+
+const leafWords = [];
+const raycaster = new THREE.Raycaster();
+raycaster.params.Points.threshold = 0.15;
+
+let mouseDownPos = null;
+renderer.domElement.addEventListener('mousedown', e => { mouseDownPos = { x: e.clientX, y: e.clientY }; });
+
+renderer.domElement.addEventListener('click', e => {
+    if (!leaves) return;
+    if (mouseDownPos) {
+        const dx = e.clientX - mouseDownPos.x, dy = e.clientY - mouseDownPos.y;
+        if (Math.sqrt(dx * dx + dy * dy) > 5) return;
+    }
+    const mouse = new THREE.Vector2(
+        (e.clientX / window.innerWidth) * 2 - 1,
+        -(e.clientY / window.innerHeight) * 2 + 1
+    );
+    raycaster.setFromCamera(mouse, camera);
+    const hits = raycaster.intersectObject(leaves);
+    if (hits.length > 0 && leafWords[hits[0].index]) showPopup(leafWords[hits[0].index], e.clientX, e.clientY);
+    else hidePopup();
+});
+
+let hoverThrottle = null;
+renderer.domElement.addEventListener('pointermove', e => {
+    if (hoverThrottle || !leaves) return;
+    hoverThrottle = setTimeout(() => {
+        hoverThrottle = null;
+        const mouse = new THREE.Vector2(
+            (e.clientX / window.innerWidth) * 2 - 1,
+            -(e.clientY / window.innerHeight) * 2 + 1
+        );
+        raycaster.setFromCamera(mouse, camera);
+        const hits = raycaster.intersectObject(leaves);
+        renderer.domElement.style.cursor = (hits.length > 0 && leafWords[hits[0].index]) ? 'pointer' : '';
+    }, 50);
+});
+
+function showPopup(wd, x, y) {
+    const popup = document.getElementById('popup');
+    document.getElementById('popup-word').textContent = wd.word;
+    document.getElementById('popup-count').textContent = wd.count.toLocaleString();
+    document.getElementById('popup-rank').textContent = '#' + wd.rank;
+    document.getElementById('popup-date').textContent = wd.firstSeen;
+    popup.style.display = 'block';
+    const pw = popup.offsetWidth, ph = popup.offsetHeight;
+    let left = x + 16, top = y - 16;
+    if (left + pw > window.innerWidth - 20) left = x - pw - 16;
+    if (top + ph > window.innerHeight - 20) top = y - ph + 16;
+    if (top < 20) top = 20;
+    popup.style.left = left + 'px';
+    popup.style.top = top + 'px';
+}
+window.hidePopup = function() { document.getElementById('popup').style.display = 'none'; };
+
+// ══════════════════════════════════════════
+// ── INTRO: SIMULTANEOUS RAIN + GROWTH ──
+// ══════════════════════════════════════════
+
+let rainGrowthDuration = 18;
+const BRIGHTEN_DUR = 2.5;
+let introPhase = 'waiting';
+let phaseTimer = 0;
+const rainSprites = [];
+let totalWordsTarget = 0;
+let counterOpacity = 0;
+
+const counterEl = document.getElementById('rain-counter');
+const counterNumEl = document.getElementById('counter-number');
+
+function createWordSprite(word, index) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256; canvas.height = 48;
+    const ctx = canvas.getContext('2d');
+    const fontSize = Math.max(12, 22 - index * 0.06);
+    ctx.font = 'bold ' + fontSize + 'px monospace';
+    ctx.shadowColor = 'rgba(80, 180, 255, 0.7)';
+    ctx.shadowBlur = 5;
+    ctx.fillStyle = 'rgba(140, 210, 255, 0.9)';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(word, 4, 24);
+    const tex = new THREE.CanvasTexture(canvas);
+    const mat = new THREE.SpriteMaterial({
+        map: tex, transparent: true, depthWrite: false,
+        blending: THREE.AdditiveBlending, opacity: 0
+    });
+    const sprite = new THREE.Sprite(mat);
+    sprite.scale.set(1.6, 0.4, 1);
+    return sprite;
+}
+
+function startRainGrowth(words, totalWords) {
+    const rng = mulberry32(314);
+    const spriteCount = Math.min(250, words.length);
+    const spreadW = Math.max(20, maxTreeY * 1.5);
+    const topY = maxTreeY + 10;
+
+    for (let i = 0; i < spriteCount; i++) {
+        const sprite = createWordSprite(words[i % words.length], i);
+        sprite.position.set(
+            (rng() - 0.5) * spreadW,
+            topY + rng() * topY,
+            (rng() - 0.5) * spreadW
+        );
+        sprite.userData.speed = 2.0 + rng() * 4.0;
+        sprite.userData.drift = (rng() - 0.5) * 0.25;
+        sprite.userData.delay = (i / spriteCount) * 5.0;
+        sprite.userData.wobble = rng() * 6.28;
+        scene.add(sprite);
+        rainSprites.push(sprite);
+    }
+
+    totalWordsTarget = totalWords;
+    counterEl.style.display = 'block';
+    counterOpacity = 0;
+
+    // Duration scales with word count
+    rainGrowthDuration = Math.min(25, 12 + words.length / 60);
+
+    introPhase = 'rainGrowth';
+    phaseTimer = 0;
+}
+
+function skipToDone() {
+    introPhase = 'done';
+    growthClip.constant = maxTreeY + 5;
+    barkMat.clippingPlanes = [];
+    leafMat.clippingPlanes = [];
+    bloomMat.clippingPlanes = [];
+    dirLight.intensity = TARGET_DIR;
+    ambient.intensity = TARGET_AMB;
+    hemiLight.intensity = TARGET_HEMI;
+    rimLight.intensity = TARGET_RIM;
+    skyUniforms.brightness.value = 1.0;
+    starMat.opacity = 0.15;
+    fireflyMat.opacity = 0.4;
+    glowMat.opacity = 0.25;
+}
+
+// ── Main API ──
+window.initTreeWords = function(wordData, uniqueWords, totalWords) {
+    uniqueWords = uniqueWords || wordData.length;
+    totalWords = totalWords || wordData.reduce((s, w) => s + w.count, 0);
+
+    // Generate massive tree
+    generateTree(42, uniqueWords);
+
+    // Assign words to leaves
+    const totalLeaves = leafPositions.length / 3;
+    const totalCount = wordData.reduce((s, w) => s + w.count, 0);
+    let idx = 0;
+    for (const wd of wordData) {
+        const share = Math.max(1, Math.round((wd.count / totalCount) * totalLeaves));
+        for (let j = 0; j < share && idx < totalLeaves; j++) {
+            leafWords[idx] = wd;
+            idx++;
+        }
+    }
+    while (idx < totalLeaves) {
+        leafWords[idx] = wordData[idx % wordData.length];
+        idx++;
+    }
+
+    // Start simultaneous rain + growth
+    if (introPhase === 'waiting') {
+        startRainGrowth(wordData.map(w => w.word), totalWords);
+    }
+};
+
+// Fallback
+setTimeout(() => {
+    if (introPhase === 'waiting') {
+        generateTree(42, 50);
+        skipToDone();
+    }
+}, 8000);
+
+// ══════════════════════════════════════════
+// ── STATE & API ──
+// ══════════════════════════════════════════
+
+let treeHealth = 0.85, treeSeason = 0.8, streakTier = 2;
+
+function getSeasonColor(season) {
+    const summer = new THREE.Color(0x44aa22);
+    const spring = new THREE.Color(0x66cc44);
+    const autumn = new THREE.Color(0xdd8822);
+    const winter = new THREE.Color(0x776644);
+    if (season > 0.66) return spring.clone().lerp(summer, (season - 0.66) * 3.0);
+    if (season > 0.33) return autumn.clone().lerp(spring, (season - 0.33) * 3.0);
+    return winter.clone().lerp(autumn, season * 3.0);
+}
+
+window.updateTreeData = function(health, season, streak, growth) {
+    treeHealth = health; treeSeason = season; streakTier = streak;
+    const col = getSeasonColor(season);
+    col.lerp(new THREE.Color(0x553311), 1.0 - health);
+    leafMat.color.copy(col);
+    leafMat.opacity = 0.4 + 0.6 * health;
+    leafMat.size = 0.06 + 0.06 * health;
+    bloomMat.opacity = streak > 0 ? 0.8 : 0.0;
+    bloomMat.size = 0.10 + 0.06 * Math.min(streak, 4);
+};
+
+// ══════════════════════════════════════════
+// ── ANIMATION LOOP ──
+// ══════════════════════════════════════════
+
+const clock = new THREE.Clock();
+
+function animate() {
+    requestAnimationFrame(animate);
+    const dt = Math.min(clock.getDelta(), 0.05);
+    const t = clock.getElapsedTime();
+    phaseTimer += dt;
+    controls.update();
+
+    // ── Rain + Growth (simultaneous) ──
+    if (introPhase === 'rainGrowth') {
+        const progress = Math.min(phaseTimer / rainGrowthDuration, 1);
+        const growthP = easeOut(progress);
+        const topY = maxTreeY + 10;
+        const spreadW = Math.max(20, maxTreeY * 1.5);
+
+        // Tree grows
+        growthClip.constant = growthP * (maxTreeY + 2);
+
+        // Fireflies appear with tree
+        fireflyMat.opacity = growthP * 0.4;
+
+        // Rain sprites
+        for (const sprite of rainSprites) {
+            if (phaseTimer > sprite.userData.delay) {
+                sprite.position.y -= sprite.userData.speed * dt;
+                sprite.position.x += sprite.userData.drift * dt;
+                sprite.position.x += Math.sin(t * 2 + sprite.userData.wobble) * 0.006;
+                const age = phaseTimer - sprite.userData.delay;
+                const fadeIn = Math.min(age * 2, 1);
+                const fadeGround = Math.max(0, Math.min(1, (sprite.position.y + 1) / 4));
+                sprite.material.opacity = 0.7 * fadeIn * fadeGround;
+                // Recycle
+                if (sprite.position.y < -3) {
+                    sprite.position.y = topY * 0.7 + Math.random() * topY * 0.5;
+                    sprite.position.x = (Math.random() - 0.5) * spreadW;
+                    sprite.position.z = (Math.random() - 0.5) * spreadW;
+                    sprite.userData.speed = 2.0 + Math.random() * 4.0;
+                    sprite.userData.delay = 0;
+                }
+            }
+        }
+
+        // Subtle light flicker (rain ambience)
+        dirLight.intensity = TARGET_DIR * RAIN_FRAC + Math.sin(t * 2.5) * 0.05;
+
+        // Counter
+        counterOpacity = Math.min(counterOpacity + dt * 1.5, 1);
+        counterEl.style.opacity = counterOpacity;
+        const countP = easeOut(progress);
+        counterNumEl.textContent = Math.floor(countP * totalWordsTarget).toLocaleString();
+
+        if (progress >= 1) {
+            introPhase = 'brighten'; phaseTimer = 0;
+            for (const s of rainSprites) { scene.remove(s); s.material.map.dispose(); s.material.dispose(); }
+            rainSprites.length = 0;
+        }
+    }
+
+    // ── Brighten (sun comes out) ──
+    if (introPhase === 'brighten') {
+        const p = smoothstep(Math.min(phaseTimer / BRIGHTEN_DUR, 1));
+
+        dirLight.intensity = TARGET_DIR * RAIN_FRAC + p * TARGET_DIR * (1 - RAIN_FRAC);
+        ambient.intensity = TARGET_AMB * RAIN_FRAC + p * TARGET_AMB * (1 - RAIN_FRAC);
+        hemiLight.intensity = TARGET_HEMI * RAIN_FRAC + p * TARGET_HEMI * (1 - RAIN_FRAC);
+        rimLight.intensity = TARGET_RIM * RAIN_FRAC + p * TARGET_RIM * (1 - RAIN_FRAC);
+        skyUniforms.brightness.value = 0.55 + p * 0.45;
+        starMat.opacity = p * 0.15;
+        glowMat.opacity = p * 0.25;
+
+        // Fade counter
+        counterOpacity = Math.max(0, 1 - p * 2.5);
+        counterEl.style.opacity = counterOpacity;
+        if (counterOpacity <= 0) counterEl.style.display = 'none';
+
+        if (phaseTimer >= BRIGHTEN_DUR) {
+            introPhase = 'done';
+            barkMat.clippingPlanes = [];
+            leafMat.clippingPlanes = [];
+            bloomMat.clippingPlanes = [];
+        }
+    }
+
+    // ── Idle ──
+    if (introPhase === 'done') {
+        bloomMat.size = (0.10 + 0.06 * Math.min(streakTier, 4)) * (1 + Math.sin(t * 2) * 0.12);
+        const ffPos = fireflyGeo.attributes.position.array;
+        for (let i = 0; i < fireflyCount; i++) {
+            const b = i * 3;
+            ffPos[b]     = fireflyBasePositions[b]     + Math.sin(t * 0.3 + i * 2.1) * 0.6;
+            ffPos[b + 1] = fireflyBasePositions[b + 1] + Math.sin(t * 0.5 + i * 1.7) * 0.4;
+            ffPos[b + 2] = fireflyBasePositions[b + 2] + Math.cos(t * 0.4 + i * 1.3) * 0.6;
+        }
+        fireflyGeo.attributes.position.needsUpdate = true;
+        starMat.opacity = 0.1 + 0.08 * Math.sin(t * 0.7);
+    }
+
+    renderer.render(scene, camera);
+}
+animate();
+
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// Signal ready
+if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.treeReady) {
+    window.webkit.messageHandlers.treeReady.postMessage('');
+}
+</script>
+</body>
+</html>

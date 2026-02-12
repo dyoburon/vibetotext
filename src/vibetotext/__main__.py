@@ -45,9 +45,9 @@ def main():
     )
     parser.add_argument(
         "--model",
-        default="base",
-        choices=["tiny", "base", "small", "medium", "large"],
-        help="Whisper model size (default: base)",
+        default="large-v3-turbo",
+        choices=["tiny", "base", "small", "medium", "large", "large-v3", "large-v3-turbo"],
+        help="Whisper model size (default: large-v3-turbo)",
     )
     parser.add_argument(
         "--hotkey",

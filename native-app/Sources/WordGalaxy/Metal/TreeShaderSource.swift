@@ -133,22 +133,7 @@ fragment float4 fragment_tree(
     TreeVOut in [[stage_in]],
     constant TreeUniforms& u [[buffer(1)]]
 ) {
-    // Procedural bark texture
-    float bark = tsnoise(float3(in.uv.x * 3.0, in.uv.y * 12.0, u.noise_seed)) * 0.15 + 0.85;
-    float grain = tsnoise(float3(in.uv.x * 1.0, in.uv.y * 40.0, u.noise_seed + 50.0)) * 0.08;
-    bark *= (1.0 + grain);
-
-    // Brown bark
-    float3 dark_bark = float3(0.22, 0.14, 0.08);
-    float3 light_bark = float3(0.35, 0.22, 0.12);
-    float3 col = mix(dark_bark, light_bark, bark);
-
-    // Directional light + ambient
-    float3 lightDir = normalize(float3(0.4, 0.8, 0.5));
-    float ndotl = max(dot(normalize(in.normal), lightDir), 0.0);
-    col *= (0.5 + 0.5 * ndotl);
-
-    return float4(col, 1.0);
+    return float4(0.25, 0.15, 0.08, 1.0);
 }
 
 // ── Leaves (point sprites) ──

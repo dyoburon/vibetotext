@@ -8,6 +8,9 @@ let package = Package(
         .executableTarget(
             name: "WordGalaxy",
             path: "Sources/WordGalaxy",
+            resources: [
+                .copy("Web/tree-scene.html"),
+            ],
             linkerSettings: [
                 .linkedFramework("Metal"),
                 .linkedFramework("MetalKit"),

@@ -42,6 +42,8 @@ final class TreeRenderer: NSObject, MTKViewDelegate {
     var uniforms = TreeUniforms()
     var lastFrameTime: CFAbsoluteTime = 0
     var cameraRotation: Float = 0
+    var cameraDistance: Float = 5.0
+    var cameraElevation: Float = 1.0
     var frameCount = 0
 
     init?(device: MTLDevice) {
@@ -303,9 +305,9 @@ final class TreeRenderer: NSObject, MTKViewDelegate {
     private func makeMVP(aspect: Float, rotation: Float) -> float4x4 {
         let proj = perspectiveMatrix(fovY: .pi / 3.5, aspect: aspect, near: 0.1, far: 100)
         let eye = SIMD3<Float>(
-            sin(rotation) * 5.0,
-            1.0,
-            cos(rotation) * 5.0
+            sin(rotation) * cameraDistance,
+            cameraElevation,
+            cos(rotation) * cameraDistance
         )
         let view = lookAtMatrix(eye: eye, center: SIMD3<Float>(0, 0.5, 0), up: SIMD3<Float>(0, 1, 0))
         return proj * view

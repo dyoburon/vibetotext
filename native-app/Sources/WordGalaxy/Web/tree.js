@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { mulberry32 } from './utils.js';
+import { mulberry32, PLANET_RADIUS } from './utils.js';
 
 // ── Materials ──
 let barkMat, leafMat, bloomMat;
@@ -28,9 +28,10 @@ let leaves = null, blooms = null;
 let leafPositions = [], bloomPositions = [];
 let maxTreeY = 0;
 let leafStartPerLevel = [];
+let treeGroup = null;
 
 export function getTreeState() {
-    return { leaves, blooms, leafPositions, bloomPositions, maxTreeY, leafStartPerLevel };
+    return { leaves, blooms, leafPositions, bloomPositions, maxTreeY, leafStartPerLevel, treeGroup };
 }
 
 // ══════════════════════════════════════════
@@ -43,6 +44,10 @@ export function generateTree(scene, camera, controls, seed, uniqueWords, strata)
     bloomPositions = [];
     leafStartPerLevel = [];
     maxTreeY = 0;
+
+    // Create tree group positioned at the north pole of the planet
+    treeGroup = new THREE.Group();
+    treeGroup.position.set(0, PLANET_RADIUS, 0);
 
     // ── Scale with word count ──
     let trunkLevels, segHeight, baseRadius;
@@ -75,7 +80,7 @@ export function generateTree(scene, camera, controls, seed, uniqueWords, strata)
         const up = new THREE.Vector3(0, 1, 0);
         if (Math.abs(dir.dot(up)) < 0.9999)
             mesh.quaternion.setFromUnitVectors(up, dir.clone().normalize());
-        scene.add(mesh);
+        treeGroup.add(mesh);
 
         if (end.y > maxTreeY) maxTreeY = end.y;
 
@@ -124,7 +129,7 @@ export function generateTree(scene, camera, controls, seed, uniqueWords, strata)
         const geo = new THREE.CylinderGeometry(topR, botR, segHeight, 12, 1);
         const mesh = new THREE.Mesh(geo, barkMat);
         mesh.position.y = (y0 + y1) / 2;
-        scene.add(mesh);
+        treeGroup.add(mesh);
         if (y1 > maxTreeY) maxTreeY = y1;
 
         leafStartPerLevel.push(leafPositions.length / 3);
@@ -180,18 +185,21 @@ export function generateTree(scene, camera, controls, seed, uniqueWords, strata)
         const up = new THREE.Vector3(0, 1, 0);
         if (Math.abs(dir.dot(up)) < 0.9999)
             mesh.quaternion.setFromUnitVectors(up, dir.clone().normalize());
-        scene.add(mesh);
+        treeGroup.add(mesh);
     }
 
     // ── Bloom points ──
     const bloomGeo = new THREE.BufferGeometry();
     bloomGeo.setAttribute('position', new THREE.Float32BufferAttribute(bloomPositions, 3));
     blooms = new THREE.Points(bloomGeo, bloomMat);
-    scene.add(blooms);
+    treeGroup.add(blooms);
 
-    // ── Camera for tree size ──
-    const h = maxTreeY;
-    controls.target.set(0, h * 0.35, 0);
-    camera.position.set(h * 0.8, h * 0.5, h * 1.1);
+    // Add tree group to scene
+    scene.add(treeGroup);
+
+    // ── Camera framing for planet + tree ──
+    const totalH = PLANET_RADIUS + maxTreeY;
+    controls.target.set(0, PLANET_RADIUS * 0.3, 0);
+    camera.position.set(totalH * 0.6, totalH * 0.5, totalH * 0.8);
     controls.update();
 }

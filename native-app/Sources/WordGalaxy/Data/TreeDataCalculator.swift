@@ -175,8 +175,8 @@ enum TreeDataCalculator {
             seasonLabel: seasonLabel,
             streakLabel: streakLabel,
             growthLabel: growthLabel,
-            mood: mood,
-            moodLabel: moodLabel,
+            mood: -0.7, // DEBUG: Force hostile mood for testing
+            moodLabel: "Hostile",
             population: population,
             recentTrend: recentTrend,
             moodBreakdown: moodBreakdown

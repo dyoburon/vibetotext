@@ -1,18 +1,18 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { mulberry32 } from './utils.js';
+import { mulberry32, PLANET_RADIUS, orientOnSphere } from './utils.js';
 import { createTreeMaterials, generateTree, getTreeState, getTreeMaterials } from './tree.js';
 import { assignWordsToLeaves, createTreeWordSprites, getLeafWordSprites, startRainSprites, getRainSprites, cleanupRainSprites, initRaycasting, hidePopup } from './words.js';
 import { getPhase, startRainGrowth, skipToDone, updateRainGrowthPhase, updateBrightenPhase, consumePendingVillageUpdate, setPendingVillageUpdate, getIntroProgress } from './intro.js';
-import { initVillage, updateVillageMood as applyVillageMood, animateVillage, isInitialized as isVillageInitialized, getVillageMood, setVillageGrowthProgress, setVillageTimeScale } from './village.js';
-import { animateSkyEntity } from './sky-entity.js';
+import { initVillage, updateVillageMood as applyVillageMood, animateVillage, isInitialized as isVillageInitialized, getVillageMood, setVillageGrowthProgress, setVillageTimeScale, updateVillageState as applyVillageState, getPendingDeaths, getVillagerObject, killVillagerVisual, placeGravestone, animateGravestoneRise } from './village.js';
+import { animateSkyEntity, setLaserFiringMode, fireLaserBeam, animateLaserBeams, cleanupLaserBeams, updateSkyFace } from './sky-entity.js';
 
 // ══════════════════════════════════════════
 // ── SCENE SETUP ──
 // ══════════════════════════════════════════
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.FogExp2(0x88aabb, 0.008);
+scene.fog = new THREE.FogExp2(0x88aabb, 0.004);
 
 const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 500);
 camera.position.set(20, 14, 28);
@@ -31,10 +31,10 @@ controls.enableDamping = true;
 controls.dampingFactor = 0.05;
 controls.autoRotate = true;
 controls.autoRotateSpeed = 0.25;
-controls.target.set(0, 8, 0);
-controls.minDistance = 3;
-controls.maxDistance = 80;
-controls.maxPolarAngle = Math.PI * 0.85;
+controls.target.set(0, PLANET_RADIUS * 0.3, 0);
+controls.minDistance = PLANET_RADIUS + 5;
+controls.maxDistance = 120;
+controls.maxPolarAngle = Math.PI;
 
 // ── Sky ──
 const skyGeo = new THREE.SphereGeometry(150, 32, 16);
@@ -109,31 +109,27 @@ rimLight.position.set(-5, 6, -8);
 scene.add(rimLight);
 
 // ── Growth clip plane ──
-const growthClip = new THREE.Plane(new THREE.Vector3(0, -1, 0), 0.01);
+const growthClip = new THREE.Plane(new THREE.Vector3(0, -1, 0), PLANET_RADIUS);
 
-// ── Ground ──
-const groundGeo = new THREE.CircleGeometry(50, 64);
-const groundMat = new THREE.MeshStandardMaterial({ color: 0x1a2a0e, roughness: 1.0, metalness: 0.0 });
-const ground = new THREE.Mesh(groundGeo, groundMat);
-ground.rotation.x = -Math.PI / 2;
-ground.position.y = -0.02;
-scene.add(ground);
+// ── Planet sphere ──
+const planetGeo = new THREE.SphereGeometry(PLANET_RADIUS, 64, 48);
+const planetMat = new THREE.MeshStandardMaterial({
+    color: 0x2a5a1a, roughness: 0.9, metalness: 0.0
+});
+const planet = new THREE.Mesh(planetGeo, planetMat);
+scene.add(planet);
 
-const glowGeo = new THREE.RingGeometry(0.5, 4.0, 32);
-const glowMat = new THREE.MeshBasicMaterial({ color: 0x2a4a1a, transparent: true, opacity: 0.0, side: THREE.DoubleSide });
-const glowRing = new THREE.Mesh(glowGeo, glowMat);
-glowRing.rotation.x = -Math.PI / 2;
-glowRing.position.y = 0.01;
-scene.add(glowRing);
-
-// ── Fireflies ──
+// ── Fireflies (spherical distribution around planet) ──
 const fireflyRng = mulberry32(777);
 const fireflyCount = 60;
 const fireflyBasePositions = new Float32Array(fireflyCount * 3);
 for (let i = 0; i < fireflyCount; i++) {
-    fireflyBasePositions[i * 3]     = (fireflyRng() - 0.5) * 20;
-    fireflyBasePositions[i * 3 + 1] = 1 + fireflyRng() * 25;
-    fireflyBasePositions[i * 3 + 2] = (fireflyRng() - 0.5) * 20;
+    const theta = fireflyRng() * Math.PI * 2;
+    const phi = fireflyRng() * Math.PI * 0.6; // upper hemisphere
+    const r = PLANET_RADIUS + 2 + fireflyRng() * 25;
+    fireflyBasePositions[i * 3]     = r * Math.sin(phi) * Math.sin(theta);
+    fireflyBasePositions[i * 3 + 1] = r * Math.cos(phi);
+    fireflyBasePositions[i * 3 + 2] = r * Math.sin(phi) * Math.cos(theta);
 }
 const fireflyGeo = new THREE.BufferGeometry();
 fireflyGeo.setAttribute('position', new THREE.Float32BufferAttribute(fireflyBasePositions.slice(), 3));
@@ -153,6 +149,208 @@ initRaycasting(renderer, camera);
 let treeHealth = 0.85, treeSeason = 0.8, streakTier = 2;
 
 // ══════════════════════════════════════════
+// ── CINEMATIC STATE MACHINE ──
+// ══════════════════════════════════════════
+
+const CINEMATIC_PHASES = {
+    IDLE: 'idle',
+    ZOOM: 'zoom',
+    CHARGE: 'charge',
+    FIRE: 'fire',
+    FALL: 'fall',
+    GRAVE: 'grave',
+    NEXT: 'next'
+};
+
+let cinematic = {
+    active: false,
+    phase: CINEMATIC_PHASES.IDLE,
+    timer: 0,
+    deaths: [],       // pending deaths to process
+    currentIndex: 0,   // which death we're on
+    beams: null,       // laser beam objects
+    savedCameraPos: null,
+    savedCameraTarget: null,
+    savedAutoRotate: false,
+};
+
+function startCinematic(pendingDeaths) {
+    if (!pendingDeaths.length) return;
+    cinematic.active = true;
+    cinematic.phase = CINEMATIC_PHASES.ZOOM;
+    cinematic.timer = 0;
+    cinematic.deaths = [...pendingDeaths];
+    cinematic.currentIndex = 0;
+    cinematic.savedCameraPos = camera.position.clone();
+    cinematic.savedCameraTarget = controls.target.clone();
+    cinematic.savedAutoRotate = controls.autoRotate;
+    controls.autoRotate = false;
+
+    // Show skip hint
+    const skipEl = document.getElementById('cinematic-skip-hint');
+    if (skipEl) skipEl.style.display = 'block';
+}
+
+function skipCinematic() {
+    if (!cinematic.active) return;
+
+    // Instantly apply all remaining deaths
+    for (let i = cinematic.currentIndex; i < cinematic.deaths.length; i++) {
+        const death = cinematic.deaths[i];
+        killVillagerVisual(death.villagerId);
+        const vObj = getVillagerObject(death.villagerId);
+        if (vObj) {
+            vObj.userData.fallProgress = 1;
+            vObj.userData.fallen = true;
+            orientOnSphere(vObj, PLANET_RADIUS);
+            vObj.rotateX(Math.PI / 2);
+        }
+        placeGravestone(scene, death);
+        animateGravestoneRise(death.villagerId, 1);
+    }
+
+    // Cleanup
+    if (cinematic.beams) {
+        cleanupLaserBeams(scene, cinematic.beams);
+        cinematic.beams = null;
+    }
+    setLaserFiringMode(false);
+    updateSkyFace(getVillageMood(), camera.position);
+
+    endCinematic();
+}
+
+function endCinematic() {
+    cinematic.active = false;
+    cinematic.phase = CINEMATIC_PHASES.IDLE;
+
+    // Restore camera
+    if (cinematic.savedCameraPos) {
+        camera.position.copy(cinematic.savedCameraPos);
+        controls.target.copy(cinematic.savedCameraTarget);
+    }
+    controls.autoRotate = cinematic.savedAutoRotate;
+
+    // Hide skip hint
+    const skipEl = document.getElementById('cinematic-skip-hint');
+    if (skipEl) skipEl.style.display = 'none';
+
+    // Tell Swift to clear pending deaths
+    if (window.webkit?.messageHandlers?.clearPendingDeaths) {
+        window.webkit.messageHandlers.clearPendingDeaths.postMessage('');
+    }
+}
+
+function updateCinematic(dt) {
+    if (!cinematic.active) return;
+    cinematic.timer += dt;
+
+    const death = cinematic.deaths[cinematic.currentIndex];
+    if (!death) { endCinematic(); return; }
+
+    const vObj = getVillagerObject(death.villagerId);
+    const targetPos = vObj
+        ? vObj.position.clone().add(vObj.position.clone().normalize())
+        : new THREE.Vector3(death.position.x, PLANET_RADIUS, death.position.z);
+
+    switch (cinematic.phase) {
+        case CINEMATIC_PHASES.ZOOM: {
+            // Camera moves to frame the sky entity and target villager
+            const normal = targetPos.clone().normalize();
+            const camOffset = normal.clone().multiplyScalar(25).add(new THREE.Vector3(0, 15, 0));
+            const viewPos = targetPos.clone().add(camOffset);
+            const viewTarget = targetPos.clone().lerp(new THREE.Vector3(0, PLANET_RADIUS + 20, 0), 0.4);
+
+            const t = Math.min(cinematic.timer / 1.0, 1);
+            const ease = t * t * (3 - 2 * t); // smoothstep
+            camera.position.lerpVectors(cinematic.savedCameraPos, viewPos, ease);
+            controls.target.lerpVectors(cinematic.savedCameraTarget, viewTarget, ease);
+
+            if (cinematic.timer >= 1.0) {
+                cinematic.phase = CINEMATIC_PHASES.CHARGE;
+                cinematic.timer = 0;
+            }
+            break;
+        }
+
+        case CINEMATIC_PHASES.CHARGE: {
+            // Eyes glow red, buildup
+            setLaserFiringMode(true);
+            updateSkyFace(getVillageMood(), camera.position);
+
+            if (cinematic.timer >= 0.5) {
+                cinematic.phase = CINEMATIC_PHASES.FIRE;
+                cinematic.timer = 0;
+                cinematic.beams = fireLaserBeam(scene, targetPos);
+            }
+            break;
+        }
+
+        case CINEMATIC_PHASES.FIRE: {
+            // Laser beams animate
+            const progress = Math.min(cinematic.timer / 1.2, 1);
+            animateLaserBeams(cinematic.beams, progress);
+
+            if (cinematic.timer >= 1.2) {
+                // Cleanup beams
+                cleanupLaserBeams(scene, cinematic.beams);
+                cinematic.beams = null;
+                setLaserFiringMode(false);
+                updateSkyFace(getVillageMood(), camera.position);
+
+                // Kill the villager
+                killVillagerVisual(death.villagerId);
+
+                cinematic.phase = CINEMATIC_PHASES.FALL;
+                cinematic.timer = 0;
+            }
+            break;
+        }
+
+        case CINEMATIC_PHASES.FALL: {
+            // Villager falls (handled by animateVillage via alive=false)
+            if (cinematic.timer >= 1.0) {
+                // Place gravestone
+                placeGravestone(scene, death);
+                cinematic.phase = CINEMATIC_PHASES.GRAVE;
+                cinematic.timer = 0;
+            }
+            break;
+        }
+
+        case CINEMATIC_PHASES.GRAVE: {
+            // Gravestone rises from ground
+            const progress = Math.min(cinematic.timer / 0.8, 1);
+            animateGravestoneRise(death.villagerId, progress);
+
+            if (cinematic.timer >= 0.8) {
+                cinematic.phase = CINEMATIC_PHASES.NEXT;
+                cinematic.timer = 0;
+            }
+            break;
+        }
+
+        case CINEMATIC_PHASES.NEXT: {
+            cinematic.currentIndex++;
+            if (cinematic.currentIndex >= cinematic.deaths.length) {
+                endCinematic();
+            } else {
+                cinematic.phase = CINEMATIC_PHASES.ZOOM;
+                cinematic.timer = 0;
+            }
+            break;
+        }
+    }
+}
+
+// Click to skip cinematic
+renderer.domElement.addEventListener('click', () => {
+    if (cinematic.active) {
+        skipCinematic();
+    }
+});
+
+// ══════════════════════════════════════════
 // ── DEPS OBJECT (shared references for intro) ──
 // ══════════════════════════════════════════
 
@@ -165,7 +363,7 @@ function getIntroDeps() {
         rainSprites: () => getRainSprites(),
         maxTreeY,
         dirLight, ambient, hemiLight, rimLight,
-        skyUniforms, starMat, fireflyMat, glowMat,
+        skyUniforms, starMat, fireflyMat,
         TARGET_DIR, TARGET_AMB, TARGET_HEMI, TARGET_RIM, RAIN_FRAC,
     };
 }
@@ -179,10 +377,20 @@ function onIntroComplete() {
     if (pending) {
         applyVillageMood(scene, pending.mood, pending.population, pending.trend);
     } else {
-        // No pending update arrived during intro — request fresh data from Swift
         if (window.webkit?.messageHandlers?.requestVillageUpdate) {
             window.webkit.messageHandlers.requestVillageUpdate.postMessage('');
         }
+    }
+
+    // Check for pending deaths after intro
+    checkAndStartCinematic();
+}
+
+function checkAndStartCinematic() {
+    if (cinematic.active) return;
+    const deaths = getPendingDeaths();
+    if (deaths.length > 0) {
+        startCinematic(deaths);
     }
 }
 
@@ -197,16 +405,16 @@ window.initTreeWords = function(wordData, uniqueWords, totalWords, strata) {
 
     generateTree(scene, camera, controls, 42, uniqueWords, strata);
 
-    const { leafPositions, leafStartPerLevel, maxTreeY } = getTreeState();
+    const { leafPositions, leafStartPerLevel, maxTreeY, treeGroup } = getTreeState();
     assignWordsToLeaves(wordData, leafPositions, leafStartPerLevel);
-    createTreeWordSprites(scene, leafPositions);
+    createTreeWordSprites(treeGroup, leafPositions);
 
     // Create village objects (hidden) for time-lapse growth during intro
     if (!isVillageInitialized()) {
         const isIntro = getPhase() === 'waiting';
         initVillage(scene, totalWords, isIntro);
         if (isIntro) {
-            setVillageTimeScale(8); // fast-forward villagers during time-lapse
+            setVillageTimeScale(8);
         }
     }
 
@@ -225,8 +433,24 @@ window.updateTreeData = function(health, season, streak, growth) {
 };
 
 window.updateVillageMood = function(mood, population, trend, totalWords) {
-    // Village spawns immediately — no waiting for intro
     applyVillageMood(scene, mood, population, trend, totalWords);
+};
+
+window.updateVillageState = function(jsonStr) {
+    try {
+        const data = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr;
+        applyVillageState(scene, data);
+
+        // If intro is done and there are pending deaths, start cinematic
+        if (getPhase() === 'done' && !cinematic.active) {
+            const deaths = data.pendingDeaths || [];
+            if (deaths.length > 0) {
+                startCinematic(deaths);
+            }
+        }
+    } catch (e) {
+        // Invalid JSON, ignore
+    }
 };
 
 window.hidePopup = hidePopup;
@@ -282,12 +506,8 @@ function animate() {
         // Stars visible at night
         deps.starMat.opacity = (1 - dayFactor) * 0.3;
 
-        // Window glow brighter at night
-        // (handled implicitly by emissive materials being more visible in darkness)
-
         if (done) {
             cleanupRainSprites(scene);
-            // Ensure full village is revealed
             setVillageGrowthProgress(1);
             setVillageTimeScale(1);
         }
@@ -317,12 +537,15 @@ function animate() {
         }
         fireflyGeo.attributes.position.needsUpdate = true;
         starMat.opacity = 0.1 + 0.08 * Math.sin(t * 0.7);
+
+        // Update cinematic if active
+        updateCinematic(dt);
     }
 
     // Village animates regardless of intro phase
     if (isVillageInitialized()) {
         animateVillage(dt, t);
-        animateSkyEntity(t, getVillageMood());
+        animateSkyEntity(t, getVillageMood(), camera.position);
     }
 
     renderer.render(scene, camera);

@@ -80,6 +80,44 @@
         letter-spacing: 3px;
     }
 
+    #death-notification {
+        display: none;
+        position: fixed;
+        bottom: 120px;
+        left: 50%;
+        transform: translateX(-50%);
+        text-align: center;
+        z-index: 200;
+        pointer-events: none;
+        font-size: 22px;
+        font-weight: 700;
+        font-family: 'SF Mono', 'Menlo', monospace;
+        color: #ff4444;
+        text-shadow: 0 0 20px rgba(255, 0, 0, 0.6), 0 0 40px rgba(255, 0, 0, 0.3);
+        letter-spacing: 2px;
+        opacity: 0;
+        transition: opacity 0.5s ease;
+    }
+
+    #cinematic-skip-hint {
+        display: none;
+        position: fixed;
+        bottom: 30px;
+        right: 30px;
+        z-index: 200;
+        pointer-events: none;
+        font-size: 12px;
+        font-weight: 500;
+        color: rgba(255, 255, 255, 0.4);
+        text-transform: uppercase;
+        letter-spacing: 2px;
+        animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+        0%, 100% { opacity: 0.4; }
+        50% { opacity: 0.8; }
+    }
+
     #rain-counter {
         display: none;
         position: fixed;
@@ -132,6 +170,9 @@
     <div id="village-pop">0</div>
     <div id="village-pop-label">villagers</div>
 </div>
+
+<div id="death-notification"></div>
+<div id="cinematic-skip-hint">Click to skip</div>
 
 <div id="rain-counter">
     <div id="counter-number">0</div>

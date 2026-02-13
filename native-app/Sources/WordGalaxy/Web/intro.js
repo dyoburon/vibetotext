@@ -1,4 +1,4 @@
-import { easeOut, smoothstep } from './utils.js';
+import { easeOut, smoothstep, PLANET_RADIUS } from './utils.js';
 
 // ── Intro state ──
 let introPhase = 'waiting';
@@ -38,7 +38,7 @@ export function startRainGrowth(words, totalWords, maxTreeY) {
 //         skyUniforms, starMat, fireflyMat, glowMat, TARGET_DIR, TARGET_AMB, TARGET_HEMI, TARGET_RIM }
 export function skipToDone(deps) {
     introPhase = 'done';
-    deps.growthClip.constant = deps.maxTreeY + 5;
+    deps.growthClip.constant = PLANET_RADIUS + deps.maxTreeY + 5;
     deps.barkMat.clippingPlanes = [];
     deps.bloomMat.clippingPlanes = [];
     for (const s of deps.leafWordSprites()) s.visible = true;
@@ -49,7 +49,6 @@ export function skipToDone(deps) {
     deps.skyUniforms.brightness.value = 1.0;
     deps.starMat.opacity = 0.15;
     deps.fireflyMat.opacity = 0.4;
-    deps.glowMat.opacity = 0.25;
 }
 
 // Returns true when phase is complete
@@ -62,11 +61,11 @@ export function updateRainGrowthPhase(dt, t, deps) {
     const spreadW = Math.max(20, deps.maxTreeY * 1.5);
 
     // Tree grows
-    const clipY = growthP * (deps.maxTreeY + 2);
+    const clipY = PLANET_RADIUS + growthP * (deps.maxTreeY + 2);
     deps.growthClip.constant = clipY;
 
-    // Show word sprites below clip plane
-    for (const s of deps.leafWordSprites()) s.visible = s.position.y < clipY;
+    // Show word sprites below clip plane (sprites are in treeGroup-local space)
+    for (const s of deps.leafWordSprites()) s.visible = s.position.y < (clipY - PLANET_RADIUS);
 
     // Fireflies appear with tree
     deps.fireflyMat.opacity = growthP * 0.4;
@@ -79,10 +78,10 @@ export function updateRainGrowthPhase(dt, t, deps) {
             sprite.position.x += Math.sin(t * 2 + sprite.userData.wobble) * 0.006;
             const age = phaseTimer - sprite.userData.delay;
             const fadeIn = Math.min(age * 2, 1);
-            const fadeGround = Math.max(0, Math.min(1, (sprite.position.y + 1) / 4));
+            const fadeGround = Math.max(0, Math.min(1, (sprite.position.y - PLANET_RADIUS + 3) / 6));
             sprite.material.opacity = 0.7 * fadeIn * fadeGround;
-            if (sprite.position.y < -3) {
-                sprite.position.y = topY * 0.7 + Math.random() * topY * 0.5;
+            if (sprite.position.y < -PLANET_RADIUS - 3) {
+                sprite.position.y = PLANET_RADIUS + topY * 0.7 + Math.random() * topY * 0.5;
                 sprite.position.x = (Math.random() - 0.5) * spreadW;
                 sprite.position.z = (Math.random() - 0.5) * spreadW;
                 sprite.userData.speed = 2.0 + Math.random() * 4.0;
@@ -121,8 +120,6 @@ export function updateBrightenPhase(dt, deps) {
     deps.rimLight.intensity = deps.TARGET_RIM * deps.RAIN_FRAC + p * deps.TARGET_RIM * (1 - deps.RAIN_FRAC);
     deps.skyUniforms.brightness.value = 0.55 + p * 0.45;
     deps.starMat.opacity = p * 0.15;
-    deps.glowMat.opacity = p * 0.25;
-
     // Fade counter
     counterOpacity = Math.max(0, 1 - p * 2.5);
     counterEl.style.opacity = counterOpacity;

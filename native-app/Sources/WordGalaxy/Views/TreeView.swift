@@ -126,7 +126,9 @@ struct TreeContainerView: View {
                 strataJSON: appState.treeStrataJSON,
                 mood: appState.treeData.mood,
                 population: appState.treeData.population,
-                recentTrend: appState.treeData.recentTrend
+                recentTrend: appState.treeData.recentTrend,
+                villageStateJSON: appState.villageStateJSON,
+                onClearPendingDeaths: { [weak appState] in appState?.clearPendingDeaths() }
             )
         }
         .background(.black)

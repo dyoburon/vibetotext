@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { PLANET_RADIUS } from './utils.js';
 
 // ── State ──
 let leafWordSprites = [];
@@ -81,8 +82,8 @@ export function assignWordsToLeaves(data, leafPositions, leafStartPerLevel) {
 }
 
 // ── Create tree word sprites ──
-export function createTreeWordSprites(scene, leafPositions) {
-    for (const s of leafWordSprites) { scene.remove(s); s.material.dispose(); }
+export function createTreeWordSprites(parent, leafPositions) {
+    for (const s of leafWordSprites) { if (s.parent) s.parent.remove(s); s.material.dispose(); }
     leafWordSprites = [];
 
     const totalLeaves = leafPositions.length / 3;
@@ -120,7 +121,7 @@ export function createTreeWordSprites(scene, leafPositions) {
             );
             sprite.userData.wd = wd;
             sprite.visible = false;
-            scene.add(sprite);
+            parent.add(sprite);
             leafWordSprites.push(sprite);
         }
     }
@@ -140,7 +141,7 @@ export function startRainSprites(scene, words, maxTreeY, rng) {
         const sprite = createWordSprite(words[i % words.length], i);
         sprite.position.set(
             (rng() - 0.5) * spreadW,
-            topY + rng() * topY,
+            PLANET_RADIUS + topY + rng() * topY,
             (rng() - 0.5) * spreadW
         );
         sprite.userData.speed = 2.0 + rng() * 4.0;

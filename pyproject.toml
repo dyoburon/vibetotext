@@ -14,11 +14,13 @@ dependencies = [
     "numpy",
     "pyperclip",
     "pynput",
-    "google-generativeai",
     "python-dotenv",
 ]
 
 [project.optional-dependencies]
+gemini = [
+    "google-generativeai",
+]
 dev = [
     "pytest",
 ]

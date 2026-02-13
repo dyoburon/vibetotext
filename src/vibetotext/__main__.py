@@ -46,7 +46,7 @@ def main():
     parser.add_argument(
         "--model",
         default="base",
-        choices=["tiny", "base", "small", "medium", "large"],
+        choices=["tiny", "base", "small", "medium", "large", "large-v2", "large-v3", "large-v3-turbo"],
         help="Whisper model size (default: base)",
     )
     parser.add_argument(

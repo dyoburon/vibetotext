@@ -2,7 +2,6 @@
 
 import os
 from pathlib import Path
-import google.generativeai as genai
 from typing import Optional
 
 # Load .env file if it exists
@@ -14,12 +13,27 @@ try:
 except ImportError:
     pass
 
-# Configure Gemini (try both common env var names)
-_api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
-if _api_key:
-    genai.configure(api_key=_api_key)
-else:
-    print("[LLM] Warning: No GEMINI_API_KEY or GOOGLE_API_KEY set. Plan/cleanup modes will fail.")
+# Lazy-loaded Gemini module
+_genai = None
+
+def _get_genai():
+    """Lazily import and configure google.generativeai."""
+    global _genai
+    if _genai is not None:
+        return _genai
+    try:
+        import google.generativeai as genai
+    except ImportError:
+        print("[LLM] google-generativeai not installed. Install with: pip install vibetotext[gemini]")
+        return None
+    api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+    if api_key:
+        genai.configure(api_key=api_key)
+        _genai = genai
+        return genai
+    else:
+        print("[LLM] Warning: No GEMINI_API_KEY or GOOGLE_API_KEY set. Plan/cleanup modes will fail.")
+        return None
 
 
 CLEANUP_PROMPT = """You are an expert prompt optimizer and thought clarifier. The user has recorded a rambling voice message and needs you to transform it into a clear, well-structured prompt or request.
@@ -102,8 +116,8 @@ def cleanup_text(text: str) -> Optional[str]:
     Returns:
         Cleaned up, refined text or None if failed
     """
-    if not _api_key:
-        print("Gemini cleanup error: No API key configured")
+    genai = _get_genai()
+    if genai is None:
         return None
 
     try:
@@ -138,8 +152,8 @@ def generate_implementation_plan(text: str) -> Optional[str]:
     Returns:
         Structured markdown implementation plan or None if failed
     """
-    if not _api_key:
-        print("Gemini plan error: No API key configured")
+    genai = _get_genai()
+    if genai is None:
         return None
 
     try:

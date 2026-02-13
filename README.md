@@ -36,12 +36,21 @@ Track your voice coding productivity:
 ```bash
 pip install -e .
 ```
-
-Requires `GEMINI_API_KEY` in `.env` for cleanup/plan modes.
+Requires `GEMINI_API_KEY` in `.env` for cleanup/plan modes. You can copy the .env.exmaple file and then add your key.
 
 ## Usage
 
 ```bash
 vibetotext              # Start with default hotkeys
 vibetotext --model base # Use specific Whisper model
+```
+
+## Start/Stop with History Application
+
+```bash
+start-all.sh
+```
+
+```bash
+stop-all.sh
 ```

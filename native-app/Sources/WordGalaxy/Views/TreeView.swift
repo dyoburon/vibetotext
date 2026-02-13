@@ -128,7 +128,7 @@ struct TreeContainerView: View {
                 population: appState.treeData.population,
                 recentTrend: appState.treeData.recentTrend,
                 villageStateJSON: appState.villageStateJSON,
-                onClearPendingDeaths: { [weak appState] in appState?.clearPendingDeaths() }
+                onVillagerKilled: { [weak appState] id, name, role in appState?.recordVillagerDeath(villagerId: id, name: name, role: role) }
             )
         }
         .background(.black)

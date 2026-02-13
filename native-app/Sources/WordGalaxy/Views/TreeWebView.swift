@@ -14,14 +14,14 @@ struct TreeWebView: NSViewRepresentable {
     let population: Int
     let recentTrend: Float
     let villageStateJSON: String
-    let onClearPendingDeaths: () -> Void
+    let onVillagerKilled: (Int, String, String) -> Void
 
     func makeNSView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         config.preferences.setValue(true, forKey: "allowFileAccessFromFileURLs")
         config.userContentController.add(context.coordinator, name: "treeReady")
         config.userContentController.add(context.coordinator, name: "requestVillageUpdate")
-        config.userContentController.add(context.coordinator, name: "clearPendingDeaths")
+        config.userContentController.add(context.coordinator, name: "villagerKilled")
 
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.setValue(false, forKey: "drawsBackground")
@@ -39,7 +39,7 @@ struct TreeWebView: NSViewRepresentable {
         coord.currentTrend = recentTrend
         coord.currentTotalWords = totalWords
         coord.currentVillageStateJSON = villageStateJSON
-        coord.onClearPendingDeaths = onClearPendingDeaths
+        coord.onVillagerKilled = onVillagerKilled
 
         // Send word data once the page is ready
         if !coord.introStarted && wordDataJSON != "[]" {
@@ -78,7 +78,7 @@ struct TreeWebView: NSViewRepresentable {
         var currentTrend: Float = 0.0
         var currentTotalWords: Int = 0
         var currentVillageStateJSON: String = "{}"
-        var onClearPendingDeaths: (() -> Void)?
+        var onVillagerKilled: ((Int, String, String) -> Void)?
 
         func userContentController(
             _ userContentController: WKUserContentController,
@@ -99,8 +99,15 @@ struct TreeWebView: NSViewRepresentable {
                     """,
                     completionHandler: nil
                 )
-            } else if message.name == "clearPendingDeaths" {
-                onClearPendingDeaths?()
+            } else if message.name == "villagerKilled" {
+                if let jsonStr = message.body as? String,
+                   let data = jsonStr.data(using: .utf8),
+                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let villagerId = json["villagerId"] as? Int,
+                   let name = json["name"] as? String,
+                   let role = json["role"] as? String {
+                    onVillagerKilled?(villagerId, name, role)
+                }
             }
         }
 

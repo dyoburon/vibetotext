@@ -1,11 +1,12 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { mulberry32, PLANET_RADIUS, orientOnSphere } from './utils.js';
+import { mulberry32, PLANET_RADIUS } from './utils.js';
 import { createTreeMaterials, generateTree, getTreeState, getTreeMaterials } from './tree.js';
 import { assignWordsToLeaves, createTreeWordSprites, getLeafWordSprites, startRainSprites, getRainSprites, cleanupRainSprites, initRaycasting, hidePopup } from './words.js';
 import { getPhase, startRainGrowth, skipToDone, updateRainGrowthPhase, updateBrightenPhase, consumePendingVillageUpdate, setPendingVillageUpdate, getIntroProgress } from './intro.js';
-import { initVillage, updateVillageMood as applyVillageMood, animateVillage, isInitialized as isVillageInitialized, getVillageMood, setVillageGrowthProgress, setVillageTimeScale, updateVillageState as applyVillageState, getPendingDeaths, getVillagerObject, killVillagerVisual, placeGravestone, animateGravestoneRise } from './village.js';
-import { animateSkyEntity, setLaserFiringMode, fireLaserBeam, animateLaserBeams, cleanupLaserBeams, updateSkyFace } from './sky-entity.js';
+import { initVillage, updateVillageMood as applyVillageMood, animateVillage, isInitialized as isVillageInitialized, getVillageMood, setVillageGrowthProgress, setVillageTimeScale, updateVillageState as applyVillageState } from './village.js';
+import { animateSkyEntity } from './sky-entity.js';
+import { initAttackController, updateAttackController, setAttackMood, skipAttackCinematic, isAttackActive } from './attack-controller.js';
 
 // ══════════════════════════════════════════
 // ── SCENE SETUP ──
@@ -148,205 +149,10 @@ initRaycasting(renderer, camera);
 // ── Tree state tracking ──
 let treeHealth = 0.85, treeSeason = 0.8, streakTier = 2;
 
-// ══════════════════════════════════════════
-// ── CINEMATIC STATE MACHINE ──
-// ══════════════════════════════════════════
-
-const CINEMATIC_PHASES = {
-    IDLE: 'idle',
-    ZOOM: 'zoom',
-    CHARGE: 'charge',
-    FIRE: 'fire',
-    FALL: 'fall',
-    GRAVE: 'grave',
-    NEXT: 'next'
-};
-
-let cinematic = {
-    active: false,
-    phase: CINEMATIC_PHASES.IDLE,
-    timer: 0,
-    deaths: [],       // pending deaths to process
-    currentIndex: 0,   // which death we're on
-    beams: null,       // laser beam objects
-    savedCameraPos: null,
-    savedCameraTarget: null,
-    savedAutoRotate: false,
-};
-
-function startCinematic(pendingDeaths) {
-    if (!pendingDeaths.length) return;
-    cinematic.active = true;
-    cinematic.phase = CINEMATIC_PHASES.ZOOM;
-    cinematic.timer = 0;
-    cinematic.deaths = [...pendingDeaths];
-    cinematic.currentIndex = 0;
-    cinematic.savedCameraPos = camera.position.clone();
-    cinematic.savedCameraTarget = controls.target.clone();
-    cinematic.savedAutoRotate = controls.autoRotate;
-    controls.autoRotate = false;
-
-    // Show skip hint
-    const skipEl = document.getElementById('cinematic-skip-hint');
-    if (skipEl) skipEl.style.display = 'block';
-}
-
-function skipCinematic() {
-    if (!cinematic.active) return;
-
-    // Instantly apply all remaining deaths
-    for (let i = cinematic.currentIndex; i < cinematic.deaths.length; i++) {
-        const death = cinematic.deaths[i];
-        killVillagerVisual(death.villagerId);
-        const vObj = getVillagerObject(death.villagerId);
-        if (vObj) {
-            vObj.userData.fallProgress = 1;
-            vObj.userData.fallen = true;
-            orientOnSphere(vObj, PLANET_RADIUS);
-            vObj.rotateX(Math.PI / 2);
-        }
-        placeGravestone(scene, death);
-        animateGravestoneRise(death.villagerId, 1);
-    }
-
-    // Cleanup
-    if (cinematic.beams) {
-        cleanupLaserBeams(scene, cinematic.beams);
-        cinematic.beams = null;
-    }
-    setLaserFiringMode(false);
-    updateSkyFace(getVillageMood(), camera.position);
-
-    endCinematic();
-}
-
-function endCinematic() {
-    cinematic.active = false;
-    cinematic.phase = CINEMATIC_PHASES.IDLE;
-
-    // Restore camera
-    if (cinematic.savedCameraPos) {
-        camera.position.copy(cinematic.savedCameraPos);
-        controls.target.copy(cinematic.savedCameraTarget);
-    }
-    controls.autoRotate = cinematic.savedAutoRotate;
-
-    // Hide skip hint
-    const skipEl = document.getElementById('cinematic-skip-hint');
-    if (skipEl) skipEl.style.display = 'none';
-
-    // Tell Swift to clear pending deaths
-    if (window.webkit?.messageHandlers?.clearPendingDeaths) {
-        window.webkit.messageHandlers.clearPendingDeaths.postMessage('');
-    }
-}
-
-function updateCinematic(dt) {
-    if (!cinematic.active) return;
-    cinematic.timer += dt;
-
-    const death = cinematic.deaths[cinematic.currentIndex];
-    if (!death) { endCinematic(); return; }
-
-    const vObj = getVillagerObject(death.villagerId);
-    const targetPos = vObj
-        ? vObj.position.clone().add(vObj.position.clone().normalize())
-        : new THREE.Vector3(death.position.x, PLANET_RADIUS, death.position.z);
-
-    switch (cinematic.phase) {
-        case CINEMATIC_PHASES.ZOOM: {
-            // Camera moves to frame the sky entity and target villager
-            const normal = targetPos.clone().normalize();
-            const camOffset = normal.clone().multiplyScalar(25).add(new THREE.Vector3(0, 15, 0));
-            const viewPos = targetPos.clone().add(camOffset);
-            const viewTarget = targetPos.clone().lerp(new THREE.Vector3(0, PLANET_RADIUS + 20, 0), 0.4);
-
-            const t = Math.min(cinematic.timer / 1.0, 1);
-            const ease = t * t * (3 - 2 * t); // smoothstep
-            camera.position.lerpVectors(cinematic.savedCameraPos, viewPos, ease);
-            controls.target.lerpVectors(cinematic.savedCameraTarget, viewTarget, ease);
-
-            if (cinematic.timer >= 1.0) {
-                cinematic.phase = CINEMATIC_PHASES.CHARGE;
-                cinematic.timer = 0;
-            }
-            break;
-        }
-
-        case CINEMATIC_PHASES.CHARGE: {
-            // Eyes glow red, buildup
-            setLaserFiringMode(true);
-            updateSkyFace(getVillageMood(), camera.position);
-
-            if (cinematic.timer >= 0.5) {
-                cinematic.phase = CINEMATIC_PHASES.FIRE;
-                cinematic.timer = 0;
-                cinematic.beams = fireLaserBeam(scene, targetPos);
-            }
-            break;
-        }
-
-        case CINEMATIC_PHASES.FIRE: {
-            // Laser beams animate
-            const progress = Math.min(cinematic.timer / 1.2, 1);
-            animateLaserBeams(cinematic.beams, progress);
-
-            if (cinematic.timer >= 1.2) {
-                // Cleanup beams
-                cleanupLaserBeams(scene, cinematic.beams);
-                cinematic.beams = null;
-                setLaserFiringMode(false);
-                updateSkyFace(getVillageMood(), camera.position);
-
-                // Kill the villager
-                killVillagerVisual(death.villagerId);
-
-                cinematic.phase = CINEMATIC_PHASES.FALL;
-                cinematic.timer = 0;
-            }
-            break;
-        }
-
-        case CINEMATIC_PHASES.FALL: {
-            // Villager falls (handled by animateVillage via alive=false)
-            if (cinematic.timer >= 1.0) {
-                // Place gravestone
-                placeGravestone(scene, death);
-                cinematic.phase = CINEMATIC_PHASES.GRAVE;
-                cinematic.timer = 0;
-            }
-            break;
-        }
-
-        case CINEMATIC_PHASES.GRAVE: {
-            // Gravestone rises from ground
-            const progress = Math.min(cinematic.timer / 0.8, 1);
-            animateGravestoneRise(death.villagerId, progress);
-
-            if (cinematic.timer >= 0.8) {
-                cinematic.phase = CINEMATIC_PHASES.NEXT;
-                cinematic.timer = 0;
-            }
-            break;
-        }
-
-        case CINEMATIC_PHASES.NEXT: {
-            cinematic.currentIndex++;
-            if (cinematic.currentIndex >= cinematic.deaths.length) {
-                endCinematic();
-            } else {
-                cinematic.phase = CINEMATIC_PHASES.ZOOM;
-                cinematic.timer = 0;
-            }
-            break;
-        }
-    }
-}
-
-// Click to skip cinematic
+// Click to skip attack cinematic
 renderer.domElement.addEventListener('click', () => {
-    if (cinematic.active) {
-        skipCinematic();
+    if (isAttackActive()) {
+        skipAttackCinematic();
     }
 });
 
@@ -376,22 +182,15 @@ function onIntroComplete() {
     const pending = consumePendingVillageUpdate();
     if (pending) {
         applyVillageMood(scene, pending.mood, pending.population, pending.trend);
+        setAttackMood(pending.mood);
     } else {
         if (window.webkit?.messageHandlers?.requestVillageUpdate) {
             window.webkit.messageHandlers.requestVillageUpdate.postMessage('');
         }
     }
 
-    // Check for pending deaths after intro
-    checkAndStartCinematic();
-}
-
-function checkAndStartCinematic() {
-    if (cinematic.active) return;
-    const deaths = getPendingDeaths();
-    if (deaths.length > 0) {
-        startCinematic(deaths);
-    }
+    // Initialize attack controller with scene deps
+    initAttackController({ scene, camera, controls, ambient });
 }
 
 // ══════════════════════════════════════════
@@ -434,20 +233,13 @@ window.updateTreeData = function(health, season, streak, growth) {
 
 window.updateVillageMood = function(mood, population, trend, totalWords) {
     applyVillageMood(scene, mood, population, trend, totalWords);
+    setAttackMood(mood);
 };
 
 window.updateVillageState = function(jsonStr) {
     try {
         const data = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr;
         applyVillageState(scene, data);
-
-        // If intro is done and there are pending deaths, start cinematic
-        if (getPhase() === 'done' && !cinematic.active) {
-            const deaths = data.pendingDeaths || [];
-            if (deaths.length > 0) {
-                startCinematic(deaths);
-            }
-        }
     } catch (e) {
         // Invalid JSON, ignore
     }
@@ -538,8 +330,8 @@ function animate() {
         fireflyGeo.attributes.position.needsUpdate = true;
         starMat.opacity = 0.1 + 0.08 * Math.sin(t * 0.7);
 
-        // Update cinematic if active
-        updateCinematic(dt);
+        // Update attack controller
+        updateAttackController(dt);
     }
 
     // Village animates regardless of intro phase

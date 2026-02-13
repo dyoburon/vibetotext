@@ -30,7 +30,7 @@ export function getVillageMood() { return villageMood; }
 export function setVillageTimeScale(s) { villageTimeScale = s; }
 
 // ── Convert flat radius to polar angle ──
-const MAX_PHI = Math.PI / 2.5; // ~72° from pole
+const MAX_PHI = Math.PI / 4; // ~45° from pole — keeps buildings in upper cap
 
 function _flatRadiusToPhi(radius, maxFlatR) {
     return Math.min((radius / maxFlatR) * MAX_PHI, Math.PI * 0.8);
@@ -78,7 +78,18 @@ function createBuilding(size, rng) {
         group.add(win);
     }
 
-    group.userData = { onFire: false, fireParticles: null, bodyMat, w, h, d };
+    // Tag children for collapse animation
+    body.userData.part = 'body';
+    roof.userData.part = 'roof';
+    door.userData.part = 'door';
+
+    group.userData = {
+        onFire: false, fireParticles: null, bodyMat, w, h, d,
+        collapsing: false, collapseProgress: 0,
+        // Store original positions for collapse lerping
+        roofOrigY: roof.position.y,
+        bodyOrigY: body.position.y,
+    };
     return group;
 }
 
@@ -213,6 +224,134 @@ function showDeathNotification(name, role) {
     }, 3000);
 }
 
+// ══════════════════════════════════════════
+// ── ORGANIC VILLAGE LAYOUT ──
+// ══════════════════════════════════════════
+
+/**
+ * Generate an organic village layout using a growth-based algorithm.
+ * Returns array of { x, z, size, type } in flat coordinates.
+ * Buildings cluster along roads that branch out from a central square.
+ */
+function _generateVillageLayout(rng, buildingCount) {
+    const placed = []; // { x, z, size, type }
+    const MIN_GAP = 3.5;  // minimum gap between buildings (alleyway width)
+
+    function overlaps(x, z, size) {
+        const halfW = size * 2.5 + MIN_GAP;
+        for (const p of placed) {
+            const dx = x - p.x, dz = z - p.z;
+            const minDist = halfW + p.size * 2.5;
+            if (dx * dx + dz * dz < minDist * minDist) return true;
+        }
+        return false;
+    }
+
+    // ── 1. Town center / square (keep area near tree clear) ──
+    const TOWN_SQUARE_R = 18;  // clear space around tree — the tree is sacred
+    const ROAD_WIDTH = 4;
+
+    // ── 2. Generate road network: main roads radiating from center ──
+    const roadCount = 2 + Math.floor(rng() * 3); // 2-4 main roads
+    const roads = [];
+    for (let i = 0; i < roadCount; i++) {
+        const angle = (i / roadCount) * Math.PI * 2 + (rng() - 0.5) * 0.4;
+        // Each road has slight curve
+        const curve = (rng() - 0.5) * 0.015;
+        const length = 25 + rng() * 20;
+        roads.push({ angle, curve, length });
+    }
+
+    // ── 3. Place buildings along roads and in clusters ──
+    // First: place buildings lining the roads
+    for (const road of roads) {
+        const steps = Math.floor(road.length / 6);
+        for (let s = 0; s < steps; s++) {
+            const dist = TOWN_SQUARE_R + 2 + s * (5 + rng() * 2);
+            if (dist > road.length + TOWN_SQUARE_R) break;
+            const a = road.angle + road.curve * dist;
+
+            // Place buildings on both sides of the road
+            for (const side of [-1, 1]) {
+                const offset = ROAD_WIDTH + 1.5 + rng() * 2;
+                const perpA = a + Math.PI / 2;
+                const bx = Math.cos(a) * dist + Math.cos(perpA) * offset * side;
+                const bz = Math.sin(a) * dist + Math.sin(perpA) * offset * side;
+                const size = 0.6 + rng() * 1.2;
+
+                if (!overlaps(bx, bz, size) && placed.length < buildingCount) {
+                    placed.push({ x: bx, z: bz, size, type: 'building' });
+                }
+            }
+        }
+    }
+
+    // ── 4. Fill in clusters between roads ──
+    let attempts = 0;
+    while (placed.length < buildingCount && attempts < buildingCount * 15) {
+        attempts++;
+        // Pick a random existing building and place near it
+        if (placed.length > 0 && rng() < 0.7) {
+            const neighbor = placed[Math.floor(rng() * placed.length)];
+            const angle = rng() * Math.PI * 2;
+            const dist = 6 + rng() * 8;
+            const bx = neighbor.x + Math.cos(angle) * dist;
+            const bz = neighbor.z + Math.sin(angle) * dist;
+            const size = 0.5 + rng() * 1.0;
+            const fromCenter = Math.sqrt(bx * bx + bz * bz);
+            if (fromCenter > TOWN_SQUARE_R && !overlaps(bx, bz, size)) {
+                placed.push({ x: bx, z: bz, size, type: 'building' });
+            }
+        } else {
+            // Random placement further out
+            const angle = rng() * Math.PI * 2;
+            const dist = TOWN_SQUARE_R + 3 + rng() * 35;
+            const bx = Math.cos(angle) * dist;
+            const bz = Math.sin(angle) * dist;
+            const size = 0.5 + rng() * 1.0;
+            if (!overlaps(bx, bz, size)) {
+                placed.push({ x: bx, z: bz, size, type: 'building' });
+            }
+        }
+    }
+
+    return placed;
+}
+
+/**
+ * Place crop patches in open spaces between building clusters.
+ */
+function _generateCropLayout(rng, buildings, cropCount) {
+    const placed = [];
+    const MIN_GAP = 4;
+
+    function tooClose(x, z) {
+        for (const b of buildings) {
+            const dx = x - b.x, dz = z - b.z;
+            if (dx * dx + dz * dz < (MIN_GAP + b.size * 2.5) * (MIN_GAP + b.size * 2.5)) return true;
+        }
+        for (const c of placed) {
+            const dx = x - c.x, dz = z - c.z;
+            if (dx * dx + dz * dz < 36) return true; // 6 units apart
+        }
+        return false;
+    }
+
+    let attempts = 0;
+    while (placed.length < cropCount && attempts < cropCount * 20) {
+        attempts++;
+        // Farms go on the outskirts
+        const angle = rng() * Math.PI * 2;
+        const dist = 15 + rng() * 25;
+        const cx = Math.cos(angle) * dist;
+        const cz = Math.sin(angle) * dist;
+        if (!tooClose(cx, cz)) {
+            placed.push({ x: cx, z: cz });
+        }
+    }
+    return placed;
+}
+
 // ── Village initialization (procedural — used for intro) ──
 export function initVillage(scene, totalWords, startHidden) {
     currentTotalWords = totalWords || currentTotalWords;
@@ -220,29 +359,34 @@ export function initVillage(scene, totalWords, startHidden) {
     const rng = villageRng;
 
     const buildingCount = Math.max(5, Math.min(100, 5 + Math.floor(Math.log2(Math.max(1, currentTotalWords / 50)) * 4)));
-    const baseRadius = 12 + Math.sqrt(buildingCount) * 2;
-    const maxFlatR = baseRadius * 1.8 + 10;
 
-    for (let i = 0; i < buildingCount; i++) {
-        const ring = i < buildingCount * 0.6 ? 0 : 1;
-        const ringOffset = ring * (baseRadius * 0.5);
-        const theta = (i / buildingCount) * Math.PI * 2 + rng() * 0.3;
-        const radius = baseRadius + ringOffset + rng() * 5;
-        const phi = _flatRadiusToPhi(radius, maxFlatR);
-        const size = 0.8 + rng() * 1.4;
-        const building = createBuilding(size, rng);
+    // Generate organic layout in flat space
+    const layout = _generateVillageLayout(rng, buildingCount);
+
+    // Compute maxFlatR from actual placed positions
+    let maxFlatR = 20;
+    for (const b of layout) {
+        const r = Math.sqrt(b.x * b.x + b.z * b.z);
+        if (r > maxFlatR) maxFlatR = r;
+    }
+    maxFlatR += 10;
+
+    // Place buildings on sphere
+    for (const b of layout) {
+        const { theta, phi } = flatToSpherical(b.x, b.z, maxFlatR);
+        const building = createBuilding(b.size, mulberry32(Math.floor(b.x * 100 + b.z * 77)));
         placeOnSphere(building, theta, phi, PLANET_RADIUS);
-        building.rotateY((rng() - 0.5) * 0.3);
+        building.rotateY(rng() * Math.PI * 2); // random facing
         if (startHidden) building.visible = false;
         scene.add(building);
         villageBuildings.push(building);
     }
 
+    // Place crops in gaps
     const cropCount = Math.max(3, Math.floor(buildingCount * 0.4));
-    for (let i = 0; i < cropCount; i++) {
-        const theta = ((i + 0.5) / cropCount) * Math.PI * 2 + rng() * 0.3;
-        const radius = baseRadius * 0.8 + rng() * 6;
-        const phi = _flatRadiusToPhi(radius, maxFlatR);
+    const cropLayout = _generateCropLayout(rng, layout, cropCount);
+    for (const c of cropLayout) {
+        const { theta, phi } = flatToSpherical(c.x, c.z, maxFlatR);
         const crop = createCropPatch(rng);
         placeOnSphere(crop, theta, phi, PLANET_RADIUS);
         crop.rotateY(rng() * Math.PI);
@@ -408,52 +552,97 @@ export function updateVillageState(scene, stateData) {
     if (hudEl) hudEl.style.opacity = '1';
 }
 
-// Get pending deaths for cinematic system
-export function getPendingDeaths() {
-    if (!lastVillageState) return [];
-    return lastVillageState.pendingDeaths || [];
-}
+// ══════════════════════════════════════════
+// ── ATTACK CONTROLLER API ──
+// ══════════════════════════════════════════
 
-// Get a villager object by ID (for cinematic targeting)
-export function getVillagerObject(villagerId) {
-    return villagerObjects.get(villagerId) || null;
-}
+const ROLE_DEATH_PRIORITY = {
+    farmer: 1, builder: 2, blacksmith: 3, scholar: 4, guard: 5, mayor: 6
+};
 
-// Kill a villager visually (called during cinematic)
-export function killVillagerVisual(villagerId) {
-    const vObj = villagerObjects.get(villagerId);
-    if (vObj) {
-        vObj.userData.alive = false;
-        vObj.userData.fallProgress = 0;
-        vObj.userData.fallen = false;
+// Get alive villagers for attack targeting
+export function getAliveVillagers() {
+    const result = [];
+    for (const [id, v] of villagerObjects) {
+        if (!v.userData.alive || !v.visible) continue;
+        const role = v.userData.role || 'farmer';
+        const homeId = v.userData.homeBuilding;
+        const buildingObj = homeId != null ? buildingObjects.get(homeId) : null;
+        result.push({
+            obj: v,
+            id: v.userData.villagerId ?? id,
+            name: v.userData.name || `Villager ${id}`,
+            role,
+            buildingObj,
+            deathPriority: ROLE_DEATH_PRIORITY[role] || ROLE_DEATH_PRIORITY.farmer
+        });
     }
+    // Also check procedural villagers if no persistent state
+    if (!persistentStateActive) {
+        for (let i = 0; i < villageVillagers.length; i++) {
+            const v = villageVillagers[i];
+            if (!v.visible || !v.userData.alive) continue;
+            const buildingObj = i < villageBuildings.length ? villageBuildings[i] : null;
+            result.push({
+                obj: v,
+                id: v.userData.villagerId ?? i,
+                name: v.userData.name || `Villager ${i}`,
+                role: v.userData.role || 'farmer',
+                buildingObj,
+                deathPriority: ROLE_DEATH_PRIORITY[v.userData.role] || 1
+            });
+        }
+    }
+    result.sort((a, b) => a.deathPriority - b.deathPriority);
+    return result;
 }
 
-// Place a gravestone for a dead villager (called after cinematic fall)
-export function placeGravestone(scene, death) {
-    if (gravestoneObjects.has(death.villagerId)) return;
-    const gs = createGravestone(death.name, death.role);
-    // Place gravestone at the dead villager's position on sphere
-    const vObj = villagerObjects.get(death.villagerId);
-    if (vObj) {
-        gs.position.copy(vObj.position).normalize().multiplyScalar(PLANET_RADIUS);
-        orientOnSphere(gs, PLANET_RADIUS);
-    } else {
-        const maxFlatR = lastVillageState ? _computeMaxFlatR(lastVillageState) : 30;
-        const { theta, phi } = flatToSpherical(death.position.x, death.position.z, maxFlatR);
-        placeOnSphere(gs, theta, phi, PLANET_RADIUS);
-    }
-    gs.scale.y = 0;
+// Kill a villager (mark dead, attack controller handles fall animation)
+export function killVillager(villagerObj) {
+    villagerObj.userData.alive = false;
+    villagerObj.userData.fallProgress = 0;
+    villagerObj.userData.fallen = false;
+    villagerObj.userData.cinematicFall = true; // attack controller drives fall speed
+}
+
+// Set fire on a building
+export function setBuildingOnFire(building) {
+    if (!building || building.userData.onFire) return;
+    building.userData.onFire = true;
+    building.userData.fireParticles = createFireParticles(building);
+}
+
+// Start building collapse animation
+export function startBuildingCollapse(building) {
+    if (!building || building.userData.collapsing) return;
+    building.userData.collapsing = true;
+    building.userData.collapseProgress = 0;
+    // Darken the building materials
+    building.traverse(child => {
+        if (child.isMesh && child.material && child.material.color) {
+            child.material.color.multiplyScalar(0.4);
+        }
+    });
+}
+
+// Place a gravestone at a villager's current sphere position
+export function placeGravestoneAt(scene, villagerObj, name, role) {
+    const villagerId = villagerObj.userData.villagerId;
+    if (villagerId != null && gravestoneObjects.has(villagerId)) return null;
+    const gs = createGravestone(name, role);
+    gs.position.copy(villagerObj.position).normalize().multiplyScalar(PLANET_RADIUS);
+    orientOnSphere(gs, PLANET_RADIUS);
+    gs.scale.set(1, 0, 1); // start hidden, will grow
     scene.add(gs);
-    gravestoneObjects.set(death.villagerId, gs);
-    showDeathNotification(death.name, death.role);
+    if (villagerId != null) gravestoneObjects.set(villagerId, gs);
+    showDeathNotification(name, role);
+    return gs;
 }
 
-// Animate gravestone rising
-export function animateGravestoneRise(villagerId, progress) {
-    const gs = gravestoneObjects.get(villagerId);
-    if (gs) {
-        gs.scale.y = Math.min(progress, 1);
+// Animate a gravestone rising (0→1)
+export function animateGravestoneRise(gravestone, progress) {
+    if (gravestone) {
+        gravestone.scale.y = Math.min(progress, 1);
     }
 }
 
@@ -552,11 +741,12 @@ export function animateVillage(dt, t) {
         _animateVillager(v, scaledDt, scaledT);
     }
 
-    // Fire particles for all buildings (in local space, works on sphere)
+    // Fire particles + collapse for all buildings
     const allBuildings = persistentStateActive
         ? [...buildingObjects.values(), ...villageBuildings]
         : villageBuildings;
     for (const b of allBuildings) {
+        // Fire particles
         if (b.userData.onFire && b.userData.fireParticles) {
             const fp = b.userData.fireParticles;
             const pos = fp.geo.attributes.position.array;
@@ -573,6 +763,44 @@ export function animateVillage(dt, t) {
             fp.geo.attributes.position.needsUpdate = true;
             fp.mat.opacity = 0.5 + Math.sin(t * 8 + b.position.x) * 0.3;
             fp.mat.size = 0.2 + Math.sin(t * 6) * 0.08;
+        }
+
+        // Building collapse animation
+        if (b.userData.collapsing && b.userData.collapseProgress < 1) {
+            b.userData.collapseProgress = Math.min(b.userData.collapseProgress + dt * 0.7, 1);
+            const p = b.userData.collapseProgress;
+            const ease = p * p; // accelerate into ground
+            const h = b.userData.h;
+
+            b.traverse(child => {
+                if (!child.isMesh) return;
+                const part = child.userData.part;
+                if (part === 'roof') {
+                    // Roof slides off to the side and tumbles
+                    child.position.y = b.userData.roofOrigY - ease * h * 0.8;
+                    child.position.x = ease * h * 0.6;
+                    child.rotation.z = ease * 1.2;
+                    child.rotation.x = ease * 0.5;
+                } else if (part === 'body') {
+                    // Walls sink and lean
+                    child.position.y = b.userData.bodyOrigY - ease * h * 0.3;
+                    child.scale.y = 1 - ease * 0.6;
+                    child.rotation.z = ease * 0.15;
+                } else if (part === 'door') {
+                    // Door falls forward
+                    child.rotation.x = -ease * (Math.PI / 2);
+                    child.position.y *= (1 - ease * 0.8);
+                }
+                // Windows just disappear with the walls
+            });
+
+            // Overall building sinks toward surface
+            // Slight random wobble during collapse
+            if (p < 0.8) {
+                const wobble = Math.sin(t * 12 + b.position.x * 3) * (1 - p) * 0.02;
+                b.rotation.x += wobble;
+                b.rotation.z += wobble * 0.7;
+            }
         }
     }
 

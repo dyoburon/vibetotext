@@ -3,6 +3,8 @@ import * as THREE from 'three';
 let skyEntity = null;
 let lastPupilUpdatePos = null;
 let laserFiring = false;
+let chargeEffect = false;
+let chargeIntensity = 0; // 0→1 during charge phase
 
 export function createSkyEntity(scene) {
     const canvas = document.createElement('canvas');
@@ -60,11 +62,14 @@ export function updateSkyFace(mood, cameraPosition) {
     for (const side of [-1, 1]) {
         const ex = cx + side * eyeSpacing;
 
-        if (laserFiring) {
-            // Glowing red laser eyes
-            ctx.fillStyle = `rgba(255, 40, 40, 0.9)`;
+        if (chargeEffect || laserFiring) {
+            // Glowing red eyes (pulse during charge, solid during fire)
+            const ci = laserFiring ? 1.0 : chargeIntensity;
+            const pulse = laserFiring ? 1.0 : 0.5 + Math.sin(Date.now() * 0.008) * 0.5;
+            const redAlpha = 0.3 + ci * 0.6 * pulse;
+            ctx.fillStyle = `rgba(255, 40, 40, ${redAlpha})`;
             ctx.shadowColor = '#ff0000';
-            ctx.shadowBlur = 30;
+            ctx.shadowBlur = 15 + ci * 25;
             ctx.beginPath();
             ctx.ellipse(ex, eyeY, 22, 18, 0, 0, Math.PI * 2);
             ctx.fill();
@@ -107,7 +112,7 @@ export function updateSkyFace(mood, cameraPosition) {
     for (const side of [-1, 1]) {
         const bx = cx + side * eyeSpacing;
         ctx.beginPath();
-        if (laserFiring || mood < -0.3) {
+        if (chargeEffect || laserFiring || mood < -0.3) {
             ctx.moveTo(bx - side * 25, eyeY - 25 + side * 8);
             ctx.lineTo(bx + side * 5, eyeY - 18);
         } else if (mood > 0.3) {
@@ -144,17 +149,18 @@ export function updateSkyFace(mood, cameraPosition) {
 export function animateSkyEntity(t, mood, cameraPosition) {
     if (!skyEntity) return;
     const baseOpacity = 0.12 + Math.abs(mood) * 0.13;
-    const laserBoost = laserFiring ? 0.4 : 0;
-    skyEntity.mat.opacity = (baseOpacity + laserBoost) * (0.85 + Math.sin(t * 0.4) * 0.15);
+    const effectBoost = (laserFiring ? 0.4 : 0) + (chargeEffect ? chargeIntensity * 0.25 : 0);
+    skyEntity.mat.opacity = (baseOpacity + effectBoost) * (0.85 + Math.sin(t * 0.4) * 0.15);
 
-    // Redraw face when camera moves significantly (throttled)
+    // Redraw face when camera moves significantly (throttled), or always during charge/laser
+    const forceRedraw = chargeEffect || laserFiring;
     if (cameraPosition) {
         if (!lastPupilUpdatePos) {
             lastPupilUpdatePos = cameraPosition.clone();
             updateSkyFace(mood, cameraPosition);
         } else {
             const dist = lastPupilUpdatePos.distanceTo(cameraPosition);
-            if (dist > 0.5) {
+            if (dist > 0.5 || forceRedraw) {
                 lastPupilUpdatePos.copy(cameraPosition);
                 updateSkyFace(mood, cameraPosition);
             }
@@ -163,6 +169,24 @@ export function animateSkyEntity(t, mood, cameraPosition) {
 }
 
 export function getSkyEntity() { return skyEntity; }
+
+// ══════════════════════════════════════════
+// ── CHARGE EFFECTS ──
+// ══════════════════════════════════════════
+
+export function startChargeEffect() {
+    chargeEffect = true;
+    chargeIntensity = 0;
+}
+
+export function stopChargeEffect() {
+    chargeEffect = false;
+    chargeIntensity = 0;
+}
+
+export function setChargeIntensity(t) {
+    chargeIntensity = Math.max(0, Math.min(1, t));
+}
 
 // ══════════════════════════════════════════
 // ── LASER BEAM SYSTEM ──

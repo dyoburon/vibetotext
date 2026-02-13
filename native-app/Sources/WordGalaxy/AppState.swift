@@ -55,13 +55,9 @@ final class AppState: ObservableObject {
 
             let treeData = TreeDataCalculator.calculate(from: entries)
 
-            // ── Village state mutation ──
-            // DEBUG: Force negative mood for testing destruction
-            let debugMood: Float = -0.7
-
+            // ── Village state mutation (birth only) ──
             let updatedVillageState = self.mutateVillageState(
                 totalWords: totalWords,
-                mood: debugMood,
                 entryCount: entries.count
             )
             let villageJSON = VillageStateManager.toJSON(updatedVillageState)
@@ -121,7 +117,7 @@ final class AppState: ObservableObject {
 
     // MARK: - Village State Mutation
 
-    private func mutateVillageState(totalWords: Int, mood: Float, entryCount: Int) -> VillageState {
+    private func mutateVillageState(totalWords: Int, entryCount: Int) -> VillageState {
         var state: VillageState
         if let existing = VillageStateManager.load() {
             state = existing
@@ -186,80 +182,45 @@ final class AppState: ObservableObject {
             changed = true
         }
 
-        // ── Death logic: mood below threshold kills villagers by priority ──
-        if mood < -0.3 {
-            // How many should die: fraction of alive villagers
-            let aliveVillagers = state.villagers.filter(\.alive)
-            let killFraction = Double((-mood - 0.3) / 0.7) // 0 at -0.3, 1 at -1.0
-            // DEBUG: Kill more aggressively for testing (was * 0.5)
-            let targetDeaths = max(2, Int(Double(aliveVillagers.count) * killFraction))
-
-            // Sort by death priority (lowest dies first)
-            let candidates = aliveVillagers
-                .filter { mood <= $0.role.deathMoodThreshold }
-                .sorted { $0.role.deathPriority < $1.role.deathPriority }
-
-            let toKill = min(targetDeaths, candidates.count)
-            for i in 0..<toKill {
-                let victim = candidates[i]
-                guard let idx = state.villagers.firstIndex(where: { $0.id == victim.id }) else { continue }
-                // Only create pending death if not already pending
-                let alreadyPending = state.pendingDeaths.contains { $0.villagerId == victim.id }
-                let alreadyDead = state.graveyard.contains { $0.villagerId == victim.id }
-                if alreadyPending || alreadyDead { continue }
-
-                state.villagers[idx].alive = false
-                state.villagers[idx].diedAt = now
-
-                let death = PendingDeath(
-                    villagerId: victim.id,
-                    name: victim.name,
-                    role: victim.role.displayName,
-                    diedAt: now,
-                    position: victim.position
-                )
-                state.pendingDeaths.append(death)
-                changed = true
-            }
-        }
-
-        // ── Building burn state ──
-        let burnFraction = mood < -0.3 ? Double((-mood - 0.3) / 0.7) : 0.0
-        let burnCount = Int(Double(state.buildings.count) * burnFraction)
-        for i in 0..<state.buildings.count {
-            let shouldBurn = i < burnCount
-            if state.buildings[i].burned != shouldBurn {
-                state.buildings[i].burned = shouldBurn
-                changed = true
-            }
-        }
-
         if changed {
             VillageStateManager.save(state)
         }
         return state
     }
 
-    func clearPendingDeaths() {
+    // MARK: - JS-Driven Death Recording
+
+    func recordVillagerDeath(villagerId: Int, name: String, role: String) {
         guard var state = VillageStateManager.load() else { return }
-        // Move pending deaths to graveyard
-        for death in state.pendingDeaths {
+        let now = Date()
+
+        // Mark villager as dead
+        if let idx = state.villagers.firstIndex(where: { $0.id == villagerId }) {
+            state.villagers[idx].alive = false
+            state.villagers[idx].diedAt = now
+        }
+
+        // Add to graveyard if not already there
+        let alreadyInGraveyard = state.graveyard.contains { $0.villagerId == villagerId }
+        if !alreadyInGraveyard {
+            let position = state.villagers.first { $0.id == villagerId }?.position ?? VillagePosition(x: 0, z: 0)
             let entry = GraveyardEntry(
-                villagerId: death.villagerId,
-                name: death.name,
-                role: death.role,
-                diedAt: death.diedAt,
-                position: death.position
+                villagerId: villagerId,
+                name: name,
+                role: role,
+                diedAt: now,
+                position: position
             )
             state.graveyard.append(entry)
         }
-        state.pendingDeaths.removeAll()
+
         VillageStateManager.save(state)
         DispatchQueue.main.async {
             self.villageState = state
             self.villageStateJSON = VillageStateManager.toJSON(state)
         }
     }
+
 
     private func startAudioIPC() {
         // Read waveform from vibetotext IPC at ~30fps

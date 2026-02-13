@@ -113,17 +113,6 @@ struct GraveyardEntry: Codable, Identifiable {
     var position: VillagePosition
 }
 
-// MARK: - Pending Death (for cinematic playback)
-
-struct PendingDeath: Codable, Identifiable {
-    var id: Int { villagerId }
-    let villagerId: Int
-    let name: String
-    let role: String
-    let diedAt: Date
-    var position: VillagePosition
-}
-
 // MARK: - Village State
 
 struct VillageState: Codable {
@@ -134,7 +123,6 @@ struct VillageState: Codable {
     var villagers: [VillagerState]
     var buildings: [BuildingState]
     var graveyard: [GraveyardEntry]
-    var pendingDeaths: [PendingDeath]
 }
 
 // MARK: - Name Generator
@@ -248,8 +236,7 @@ enum VillageStateManager {
             nextVillagerId: 6,
             villagers: villagers,
             buildings: buildings,
-            graveyard: [],
-            pendingDeaths: []
+            graveyard: []
         )
     }
 

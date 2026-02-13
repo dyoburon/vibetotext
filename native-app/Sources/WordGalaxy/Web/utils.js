@@ -39,27 +39,18 @@ export function spherePosition(theta, phi, R) {
  * - local Y axis = surface normal (stands upright on sphere)
  * - local +Z faces toward the north pole (toward the tree)
  */
+const _up = new THREE.Vector3(0, 1, 0);
+
+/**
+ * Place a Three.js object on the sphere surface and orient it so
+ * local Y axis = surface normal (stands upright on sphere).
+ */
 export function placeOnSphere(object, theta, phi, R) {
     const pos = spherePosition(theta, phi, R);
     object.position.copy(pos);
-
     const normal = pos.clone().normalize();
-    const pole = new THREE.Vector3(0, 1, 0);
-
-    // Tangent direction toward the pole (projected onto surface tangent plane)
-    const towardPole = pole.clone().sub(normal.clone().multiplyScalar(pole.dot(normal)));
-
-    if (towardPole.lengthSq() < 0.0001) {
-        // We're AT the pole; pick an arbitrary forward direction
-        towardPole.set(0, 0, -1);
-    }
-    towardPole.normalize();
-
-    // Build rotation: Y = normal (up), Z = toward pole (forward)
-    const right = new THREE.Vector3().crossVectors(towardPole, normal).normalize();
-    const forward = new THREE.Vector3().crossVectors(normal, right).normalize();
-    const matrix = new THREE.Matrix4().makeBasis(right, normal, forward);
-    object.quaternion.setFromRotationMatrix(matrix);
+    // Rotate from default up (0,1,0) to the surface normal
+    object.quaternion.setFromUnitVectors(_up, normal);
 }
 
 /**
@@ -68,14 +59,7 @@ export function placeOnSphere(object, theta, phi, R) {
  */
 export function orientOnSphere(object, R) {
     const normal = object.position.clone().normalize();
-    const pole = new THREE.Vector3(0, 1, 0);
-    const towardPole = pole.clone().sub(normal.clone().multiplyScalar(pole.dot(normal)));
-    if (towardPole.lengthSq() < 0.0001) towardPole.set(0, 0, -1);
-    towardPole.normalize();
-    const right = new THREE.Vector3().crossVectors(towardPole, normal).normalize();
-    const forward = new THREE.Vector3().crossVectors(normal, right).normalize();
-    const matrix = new THREE.Matrix4().makeBasis(right, normal, forward);
-    object.quaternion.setFromRotationMatrix(matrix);
+    object.quaternion.setFromUnitVectors(_up, normal);
 }
 
 /**

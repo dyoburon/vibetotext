@@ -2,7 +2,10 @@
   "permissions": {
     "allow": [
       "WebFetch(domain:www.shadertoy.com)",
-      "WebFetch(domain:threejsroadmap.com)"
+      "WebFetch(domain:threejsroadmap.com)",
+      "WebFetch(domain:inspirnathan.com)",
+      "WebFetch(domain:blog.maximeheckel.com)",
+      "WebFetch(domain:tonisagrista.com)"
     ]
   }
 }

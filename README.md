@@ -37,7 +37,7 @@ Track your voice coding productivity:
 pip install -e .
 ```
 
-Requires `GEMINI_API_KEY` in `.env` for cleanup/plan modes.
+Optionally set `GEMINI_API_KEY` in `.env` to enable cleanup/plan modes.
 
 ## Usage
 

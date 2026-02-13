@@ -2,7 +2,6 @@
 
 import os
 from pathlib import Path
-import google.generativeai as genai
 from typing import Optional
 
 # Load .env file if it exists
@@ -14,10 +13,20 @@ try:
 except ImportError:
     pass
 
+# Try to import google.generativeai (optional dependency)
+try:
+    import google.generativeai as genai
+    _genai_available = True
+except ImportError:
+    genai = None
+    _genai_available = False
+
 # Configure Gemini (try both common env var names)
 _api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
-if _api_key:
+if _api_key and _genai_available:
     genai.configure(api_key=_api_key)
+elif not _genai_available:
+    print("[LLM] google-generativeai package not installed. Plan/cleanup modes unavailable.")
 else:
     print("[LLM] Warning: No GEMINI_API_KEY or GOOGLE_API_KEY set. Plan/cleanup modes will fail.")
 
@@ -102,6 +111,9 @@ def cleanup_text(text: str) -> Optional[str]:
     Returns:
         Cleaned up, refined text or None if failed
     """
+    if not _genai_available:
+        print("Gemini cleanup error: google-generativeai package not installed")
+        return None
     if not _api_key:
         print("Gemini cleanup error: No API key configured")
         return None
@@ -138,6 +150,9 @@ def generate_implementation_plan(text: str) -> Optional[str]:
     Returns:
         Structured markdown implementation plan or None if failed
     """
+    if not _genai_available:
+        print("Gemini plan error: google-generativeai package not installed")
+        return None
     if not _api_key:
         print("Gemini plan error: No API key configured")
         return None

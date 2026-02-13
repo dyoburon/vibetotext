@@ -13,6 +13,9 @@ struct SidebarView: View {
                 NavigationLink(value: NavDestination.tree) {
                     Label("Frequency Tree", systemImage: "leaf")
                 }
+                NavigationLink(value: NavDestination.shaderPreview) {
+                    Label("Shader Preview", systemImage: "circle.hexagongrid")
+                }
                 NavigationLink(value: NavDestination.history(mode: nil)) {
                     Label("All History", systemImage: "clock")
                 }

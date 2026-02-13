@@ -112,35 +112,43 @@ vertex SphereVOut vertex_sphere(SphereVIn in [[stage_in]],
 
 fragment float4 fragment_sphere(SphereVOut in [[stage_in]],
                                 constant Uniforms& u [[buffer(1)]]) {
-    // 4 stacked noise layers at different scales + orientations
-    float3 seed = float3(u.noiseSeedX, u.noiseSeedY, u.noiseSeedX + u.noiseSeedY);
     float3 p = in.worldPos;
     float t = u.time;
+    float amp = u.amplitude;
 
-    float n1 = snoise(p * 0.8 + seed + float3(t * 0.02, t * 0.015, t * -0.018));
-    float n2 = snoise(p * 1.5 + seed * 1.3 + float3(t * -0.015, t * 0.02, t * 0.01));
-    float n3 = snoise(p * 2.8 + seed * 0.7 + float3(t * 0.01, t * -0.012, t * 0.02));
-    float n4 = snoise(p * 4.5 + seed * 2.1 + float3(t * -0.008, t * 0.01, t * -0.015));
+    // Fresnel rim — strong edge glow
+    float fresnel = pow(1.0 - in.ndotv, 3.0);
 
-    // Combine: large shapes + medium detail + fine detail
-    float mask = n1 * 0.45 + n2 * 0.3 + n3 * 0.15 + n4 * 0.1;
+    // Screen-space Y for smooth scan lines (pixel-aligned, no mesh artifacts)
+    float screenY = in.position.y;
 
-    // Continuous opacity — no hard edges, just bright and ghost regions
-    float opacity = smoothstep(-0.4, 0.3, -mask);
-    // Power curve pushes most values toward the dim end
-    opacity = pow(opacity, 3.0) * 0.35 + 0.03;
+    // Horizontal scan lines — screen-space for perfect smoothness
+    float scanFreq = 4.0;
+    float scanLines = pow(sin(screenY * scanFreq + t * 1.5) * 0.5 + 0.5, 8.0);
 
-    // Panel edges — glow at triangle boundaries for Dyson sphere look
-    float edgeDist = min(min(in.bary.x, in.bary.y), in.bary.z);
-    float edge = smoothstep(0.05, 0.0, edgeDist);
-    edge *= (1.0 + sin(u.time * 2.0) * 0.3 + u.amplitude * 0.5);
+    // Scrolling bright bar — sweeps up and down in screen space
+    float barCenter = sin(t * 0.8) * 0.4 + 0.5;  // 0..1 range
+    float barY = in.position.y / in.position.w;    // normalized
+    float bar = smoothstep(0.12, 0.0, abs(p.y - sin(t * 0.8) * 0.9));
+    bar *= (1.0 + amp * 1.5);
 
-    // Subtle panel fill + rim lighting
-    float panelFill = 0.03;
-    float fresnel = pow(1.0 - in.ndotv, 2.5) * 0.2;
+    // Flicker — screen-space for smoothness
+    float flicker = 1.0 - amp * 0.3 * sin(t * 17.0 + screenY * 0.5);
 
-    float3 col = float3(0.835, 0.349, 0.514);  // #D55983
-    float a = (edge * 0.8 + panelFill + fresnel) * opacity;
+    // Combine: rim + scan lines + bar
+    float intensity = fresnel * 0.6
+                    + scanLines * 0.25
+                    + bar * 0.5
+                    + 0.04;  // base fill
+    intensity *= flicker;
+
+    // Color: gradient across sphere — blue top to pink bottom
+    float3 blueCol = float3(0.133, 0.592, 0.914);           // #2297E9
+    float3 pinkCol = float3(0.769, 0.396, 0.557);           // #C4658E
+    float grad = p.x * 0.5 + 0.5;  // -1..1 → 0..1, left to right
+    float3 col = mix(pinkCol, blueCol, grad);
+
+    float a = clamp(intensity, 0.0, 1.0);
     return float4(col * a, a);
 }
 

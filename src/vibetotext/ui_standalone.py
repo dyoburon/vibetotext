@@ -250,7 +250,7 @@ class MetalRenderer:
         self.rotation += 0.006
 
         raw_amp = sum(levels) / len(levels) if levels and recording else 0.0
-        self.smooth_amp = self.smooth_amp * 0.7 + raw_amp * 0.3
+        self.smooth_amp = self.smooth_amp * 0.5 + raw_amp * 0.5
         amp = self.smooth_amp if recording else 0.0
 
         # MVP matrix
@@ -469,7 +469,7 @@ class AppDelegate(NSObject):
                 elif not self.recording:
                     self.levels = [0.0] * 25
 
-                self.target_scale = 3.8 if self.recording else 1.0
+                self.target_scale = 6.1 if self.recording else 1.0
 
                 scale_diff = self.target_scale - self.current_scale
                 if abs(scale_diff) > 0.01:
@@ -477,7 +477,7 @@ class AppDelegate(NSObject):
                         self.scale_velocity * 0.7 + scale_diff * 0.15
                     )
                     self.current_scale += self.scale_velocity
-                    self.current_scale = max(1.0, min(3.8, self.current_scale))
+                    self.current_scale = max(1.0, min(6.1, self.current_scale))
 
                     nw = int(self.base_width * self.current_scale)
                     nh = int(self.base_height * self.current_scale)

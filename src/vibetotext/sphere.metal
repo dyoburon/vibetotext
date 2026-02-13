@@ -75,7 +75,7 @@ struct SphereVOut {
 vertex SphereVOut vertex_sphere(SphereVIn in [[stage_in]],
                                 constant Uniforms& u [[buffer(1)]]) {
     // Expand sphere slightly with voice
-    float scale = 1.0 + u.amplitude * 0.15;
+    float scale = 1.0 + u.amplitude * 0.45;
     float3 disp = in.position * scale;
 
     // Subtle tangential displacement — dots drift along the surface

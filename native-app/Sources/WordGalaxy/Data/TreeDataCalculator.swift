@@ -158,17 +158,12 @@ enum TreeDataCalculator {
             let hoursAgo = Float(now.timeIntervalSince(entry.timestamp)) / 3600.0
             if hoursAgo > maxAgeHours { continue }
             let weight = pow(decayPerHour, hoursAgo)
-            let snippet = String(entry.text.prefix(80))
-            moodEntries.append(MoodEntry(text: snippet, sentiment: s, hoursAgo: hoursAgo, weight: weight))
+            moodEntries.append(MoodEntry(text: entry.text, sentiment: s, hoursAgo: hoursAgo, weight: weight))
         }
-        // Sort by absolute weighted impact (sentiment * weight), take top 5 positive + top 5 negative
-        let positive = moodEntries.filter { $0.sentiment > 0.05 }
+        // Sort all entries by absolute weighted impact (sentiment * weight)
+        let moodBreakdown = moodEntries
+            .filter { abs($0.sentiment) > 0.05 }
             .sorted { abs($0.sentiment) * Double($0.weight) > abs($1.sentiment) * Double($1.weight) }
-            .prefix(5)
-        let negative = moodEntries.filter { $0.sentiment < -0.05 }
-            .sorted { abs($0.sentiment) * Double($0.weight) > abs($1.sentiment) * Double($1.weight) }
-            .prefix(5)
-        let moodBreakdown = Array(negative) + Array(positive)
 
         return TreeData(
             health: health,

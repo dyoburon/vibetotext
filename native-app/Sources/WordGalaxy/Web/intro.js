@@ -16,6 +16,7 @@ export function getPhase() { return introPhase; }
 export function setPhase(phase) { introPhase = phase; }
 export function resetPhaseTimer() { phaseTimer = 0; }
 export function advancePhaseTimer(dt) { phaseTimer += dt; }
+export function getIntroProgress() { return Math.min(phaseTimer / rainGrowthDuration, 1); }
 
 export function setPendingVillageUpdate(data) { pendingVillageUpdate = data; }
 export function consumePendingVillageUpdate() {

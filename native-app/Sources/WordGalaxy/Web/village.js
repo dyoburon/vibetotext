@@ -11,9 +11,13 @@ const villageVillagers = [];
 const villageCrops = [];
 let villageInitialized = false;
 const villageRng = mulberry32(2024);
+let villageGrowthProgress = 1.0; // 0 = nothing visible, 1 = everything visible
+let villageTimeScale = 1.0; // speed multiplier for villager movement during intro
+let allVillagersCreated = false;
 
 export function isInitialized() { return villageInitialized; }
 export function getVillageMood() { return villageMood; }
+export function setVillageTimeScale(s) { villageTimeScale = s; }
 
 // ── Building creation ──
 function createBuilding(x, z, size, rng) {
@@ -166,21 +170,19 @@ function createCropPatch(x, z, rng) {
 // ── Village initialization (scales with totalWords) ──
 let currentTotalWords = 0;
 
-export function initVillage(scene, totalWords) {
+export function initVillage(scene, totalWords, startHidden) {
     currentTotalWords = totalWords || currentTotalWords;
     if (villageInitialized) return;
     const rng = villageRng;
 
     // Scale buildings with word count: 5 at 100 words → 80+ at 500k words
-    // Formula: 5 + log2(totalWords / 50) * 4, clamped 5–100
     const buildingCount = Math.max(5, Math.min(100, 5 + Math.floor(Math.log2(Math.max(1, currentTotalWords / 50)) * 4)));
 
     // Radius grows with building count to avoid overcrowding
-    // Inner ring + outer ring for large villages
     const baseRadius = 12 + Math.sqrt(buildingCount) * 2;
 
     for (let i = 0; i < buildingCount; i++) {
-        const ring = i < buildingCount * 0.6 ? 0 : 1; // 60% inner ring, 40% outer ring
+        const ring = i < buildingCount * 0.6 ? 0 : 1;
         const ringOffset = ring * (baseRadius * 0.5);
         const angle = (i / buildingCount) * Math.PI * 2 + rng() * 0.3;
         const radius = baseRadius + ringOffset + rng() * 5;
@@ -188,6 +190,7 @@ export function initVillage(scene, totalWords) {
         const z = Math.sin(angle) * radius;
         const size = 0.8 + rng() * 1.4;
         const building = createBuilding(x, z, size, rng);
+        if (startHidden) building.visible = false;
         scene.add(building);
         villageBuildings.push(building);
     }
@@ -200,15 +203,54 @@ export function initVillage(scene, totalWords) {
         const x = Math.cos(angle) * radius;
         const z = Math.sin(angle) * radius;
         const crop = createCropPatch(x, z, rng);
+        if (startHidden) crop.visible = false;
         scene.add(crop);
         villageCrops.push(crop);
     }
 
+    // Pre-create all villagers (max population based on word count)
+    const maxVillagers = Math.max(5, Math.min(60, Math.floor(buildingCount * 0.8)));
+    _spawnVillagers(scene, maxVillagers, startHidden);
+    allVillagersCreated = true;
+
     createSkyEntity(scene);
     villageInitialized = true;
+
+    if (startHidden) {
+        villageGrowthProgress = 0;
+    }
 }
 
-function spawnVillagers(scene, count) {
+// Progressively reveal the village: p from 0 (empty) to 1 (full)
+export function setVillageGrowthProgress(p) {
+    villageGrowthProgress = Math.max(0, Math.min(1, p));
+
+    // Reveal buildings: first building at p=0.02, last at p=0.9
+    for (let i = 0; i < villageBuildings.length; i++) {
+        const threshold = 0.02 + (i / villageBuildings.length) * 0.88;
+        villageBuildings[i].visible = villageGrowthProgress >= threshold;
+    }
+
+    // Reveal crops: start appearing at p=0.15, all visible by p=0.85
+    for (let i = 0; i < villageCrops.length; i++) {
+        const threshold = 0.15 + (i / villageCrops.length) * 0.70;
+        villageCrops[i].visible = villageGrowthProgress >= threshold;
+    }
+
+    // Reveal villagers: first at p=0.05, more as village grows
+    for (let i = 0; i < villageVillagers.length; i++) {
+        const threshold = 0.05 + (i / villageVillagers.length) * 0.85;
+        const v = villageVillagers[i];
+        const shouldShow = villageGrowthProgress >= threshold;
+        v.visible = shouldShow;
+        if (shouldShow) {
+            v.userData.alive = true;
+            v.userData.fallen = false;
+        }
+    }
+}
+
+function _spawnVillagers(scene, count, startHidden) {
     const buildingCount = villageBuildings.length;
     const baseRadius = 12 + Math.sqrt(buildingCount) * 2;
     const rng = mulberry32(7777 + villageVillagers.length);
@@ -216,9 +258,14 @@ function spawnVillagers(scene, count) {
         const angle = rng() * Math.PI * 2;
         const r = baseRadius * 0.6 + rng() * baseRadius * 0.8;
         const v = createVillager(Math.cos(angle) * r, Math.sin(angle) * r, rng);
+        if (startHidden) v.visible = false;
         scene.add(v);
         villageVillagers.push(v);
     }
+}
+
+function spawnVillagers(scene, count) {
+    _spawnVillagers(scene, count, false);
 }
 
 // ── Main mood update ──
@@ -258,18 +305,23 @@ export function updateVillageMood(scene, mood, population, trend, totalWords) {
         }
     }
 
-    // Update villager alive/dead state
+    // Update villager alive/dead/hidden state
     for (let i = 0; i < villageVillagers.length; i++) {
         const v = villageVillagers[i];
-        const shouldBeAlive = i < population;
-        if (shouldBeAlive && !v.userData.alive) {
+        if (i >= population) {
+            // Extra pre-created villagers: hide, don't kill
+            v.visible = false;
+            v.userData.alive = true;
+            v.userData.fallen = false;
+        } else if (!v.userData.alive) {
+            v.visible = true;
             v.userData.alive = true;
             v.userData.fallen = false;
             v.userData.fallProgress = 0;
             v.rotation.z = 0;
             v.position.y = 0;
-        } else if (!shouldBeAlive && v.userData.alive) {
-            v.userData.alive = false;
+        } else {
+            v.visible = true;
         }
     }
 
@@ -295,11 +347,16 @@ export function updateVillageMood(scene, mood, population, trend, totalWords) {
 
 // ── Per-frame animation ──
 export function animateVillage(dt, t) {
+    // Apply time scale (fast during intro time-lapse)
+    const scaledDt = dt * villageTimeScale;
+    const scaledT = t * villageTimeScale;
+
     // Villager walking / death
     for (const v of villageVillagers) {
+        if (!v.visible) continue;
         if (!v.userData.alive) {
             if (!v.userData.fallen) {
-                v.userData.fallProgress = Math.min(v.userData.fallProgress + dt * 2.0, 1.0);
+                v.userData.fallProgress = Math.min(v.userData.fallProgress + scaledDt * 2.0, 1.0);
                 v.rotation.z = v.userData.fallProgress * (Math.PI / 2);
                 v.position.y = -v.userData.fallProgress * 0.15;
                 if (v.userData.fallProgress >= 1.0) v.userData.fallen = true;
@@ -312,7 +369,7 @@ export function animateVillage(dt, t) {
         const dist = Math.sqrt(dx * dx + dz * dz);
 
         if (dist < 0.4) {
-            v.userData.waitTimer -= dt;
+            v.userData.waitTimer -= scaledDt;
             if (v.userData.waitTimer <= 0) {
                 const bCount = villageBuildings.length;
                 const bRadius = 12 + Math.sqrt(bCount) * 2;
@@ -323,11 +380,11 @@ export function animateVillage(dt, t) {
                 v.userData.waitTimer = 1.5 + Math.random() * 3;
             }
         } else {
-            const step = v.userData.speed * dt;
+            const step = v.userData.speed * scaledDt;
             v.position.x += (dx / dist) * step;
             v.position.z += (dz / dist) * step;
             v.rotation.y = Math.atan2(dx, dz);
-            v.position.y = Math.abs(Math.sin(t * 6 * v.userData.speed + v.userData.phaseOffset)) * 0.025;
+            v.position.y = Math.abs(Math.sin(scaledT * 6 * v.userData.speed + v.userData.phaseOffset)) * 0.025;
         }
     }
 
@@ -354,9 +411,10 @@ export function animateVillage(dt, t) {
 
     // Crop sway
     for (const crop of villageCrops) {
+        if (!crop.visible) continue;
         for (let i = 0; i < crop.userData.stalks.length; i++) {
             crop.userData.stalks[i].rotation.z =
-                Math.sin(t * 1.2 + i * 0.4 + crop.position.x) * 0.04;
+                Math.sin(scaledT * 1.2 + i * 0.4 + crop.position.x) * 0.04;
         }
     }
 }

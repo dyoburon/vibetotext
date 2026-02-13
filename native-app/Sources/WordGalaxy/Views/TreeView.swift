@@ -175,7 +175,7 @@ private struct MoodStatItem: View {
     let color: Color
     let mood: Float
     let breakdown: [MoodEntry]
-    @State private var isHovering = false
+    @State private var showingDetail = false
 
     var body: some View {
         VStack(spacing: 2) {
@@ -186,81 +186,148 @@ private struct MoodStatItem: View {
                 .font(.system(size: 10))
                 .foregroundColor(Color(white: 0.5))
         }
-        .onHover { hovering in
-            isHovering = hovering
+        .onTapGesture {
+            showingDetail = true
         }
-        .popover(isPresented: $isHovering, arrowEdge: .bottom) {
-            MoodBreakdownPopover(mood: mood, breakdown: breakdown)
+        .onHover { hovering in
+            if hovering {
+                NSCursor.pointingHand.push()
+            } else {
+                NSCursor.pop()
+            }
+        }
+        .sheet(isPresented: $showingDetail) {
+            MoodDetailView(mood: mood, breakdown: breakdown)
         }
     }
 }
 
-private struct MoodBreakdownPopover: View {
+private struct MoodDetailView: View {
     let mood: Float
     let breakdown: [MoodEntry]
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(spacing: 0) {
+            // Header
             HStack {
-                Text("AI Mood: \(moodEmoji)")
-                    .font(.system(size: 14, weight: .bold))
-                Text(String(format: "%.0f%%", (mood + 1) / 2 * 100))
-                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                    .foregroundColor(moodColor)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("AI Mood Analysis")
+                        .font(.system(size: 20, weight: .bold))
+                    HStack(spacing: 8) {
+                        Text(moodLabel)
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(moodColor)
+                        Text(String(format: "%.0f%%", (mood + 1) / 2 * 100))
+                            .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                            .foregroundColor(moodColor)
+                        moodBar
+                    }
+                }
+                Spacer()
+                Button("Done") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
             }
+            .padding(20)
+            .background(Color(white: 0.12))
+
+            Divider()
 
             if breakdown.isEmpty {
+                Spacer()
                 Text("No sentiment data yet")
-                    .font(.system(size: 11))
+                    .font(.system(size: 14))
                     .foregroundColor(.secondary)
+                Spacer()
             } else {
-                let negatives = breakdown.filter { $0.sentiment < 0 }
-                let positives = breakdown.filter { $0.sentiment > 0 }
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        let negatives = breakdown.filter { $0.sentiment < 0 }
+                            .sorted { abs($0.sentiment) * Double($0.weight) > abs($1.sentiment) * Double($1.weight) }
+                        let positives = breakdown.filter { $0.sentiment > 0 }
+                            .sorted { abs($0.sentiment) * Double($0.weight) > abs($1.sentiment) * Double($1.weight) }
 
-                if !positives.isEmpty {
-                    Text("Made me happy:")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(.green)
-                    ForEach(positives) { entry in
-                        sentimentRow(entry)
-                    }
-                }
+                        if !negatives.isEmpty {
+                            sectionView(
+                                title: "Made me upset (\(negatives.count))",
+                                titleColor: .red,
+                                entries: negatives
+                            )
+                        }
 
-                if !negatives.isEmpty {
-                    Text("Made me upset:")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(.red)
-                        .padding(.top, positives.isEmpty ? 0 : 4)
-                    ForEach(negatives) { entry in
-                        sentimentRow(entry)
+                        if !positives.isEmpty {
+                            sectionView(
+                                title: "Made me happy (\(positives.count))",
+                                titleColor: .green,
+                                entries: positives
+                            )
+                        }
                     }
+                    .padding(20)
                 }
             }
         }
-        .padding(12)
-        .frame(width: 300)
+        .frame(width: 600, height: 500)
+        .preferredColorScheme(.dark)
     }
 
-    private func sentimentRow(_ entry: MoodEntry) -> some View {
-        HStack(alignment: .top, spacing: 6) {
-            Text(entry.sentiment > 0 ? "+" : "")
-                .font(.system(size: 10, design: .monospaced))
-                .foregroundColor(entry.sentiment > 0 ? .green : .red)
-            + Text(String(format: "%.0f%%", entry.sentiment * 100))
-                .font(.system(size: 10, design: .monospaced))
-                .foregroundColor(entry.sentiment > 0 ? .green : .red)
+    private func sectionView(title: String, titleColor: Color, entries: [MoodEntry]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.system(size: 14, weight: .bold))
+                .foregroundColor(titleColor)
+                .padding(.bottom, 2)
 
-            Text(entry.text)
-                .font(.system(size: 11))
-                .foregroundColor(.primary)
-                .lineLimit(2)
+            ForEach(entries) { entry in
+                HStack(alignment: .top, spacing: 10) {
+                    // Sentiment bar
+                    let barWidth = CGFloat(min(abs(entry.sentiment), 1.0)) * 40
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(entry.sentiment > 0 ? Color.green : Color.red)
+                        .frame(width: max(barWidth, 4), height: 14)
+                        .padding(.top, 3)
 
-            Spacer()
+                    // Score
+                    Text(String(format: "%+.0f%%", entry.sentiment * 100))
+                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                        .foregroundColor(entry.sentiment > 0 ? .green : .red)
+                        .frame(width: 50, alignment: .trailing)
 
-            Text(timeAgo(entry.hoursAgo))
-                .font(.system(size: 9))
-                .foregroundColor(.secondary)
+                    // Full text
+                    Text(entry.text)
+                        .font(.system(size: 12))
+                        .foregroundColor(.primary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Spacer()
+
+                    // Time
+                    Text(timeAgo(entry.hoursAgo))
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundColor(.secondary)
+                        .frame(width: 35, alignment: .trailing)
+                }
+                .padding(.vertical, 4)
+                .padding(.horizontal, 8)
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(Color(white: 0.15))
+                )
+            }
         }
+    }
+
+    private var moodBar: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(Color(white: 0.2))
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(moodColor)
+                    .frame(width: geo.size.width * CGFloat((mood + 1) / 2))
+            }
+        }
+        .frame(width: 80, height: 8)
     }
 
     private func timeAgo(_ hours: Float) -> String {
@@ -269,12 +336,12 @@ private struct MoodBreakdownPopover: View {
         return "\(Int(hours / 24))d"
     }
 
-    private var moodEmoji: String {
-        if mood > 0.5 { return "radiant" }
-        if mood > 0.15 { return "warm" }
-        if mood > -0.15 { return "neutral" }
-        if mood > -0.5 { return "cold" }
-        return "hostile"
+    private var moodLabel: String {
+        if mood > 0.5 { return "Radiant" }
+        if mood > 0.15 { return "Warm" }
+        if mood > -0.15 { return "Neutral" }
+        if mood > -0.5 { return "Cold" }
+        return "Hostile"
     }
 
     private var moodColor: Color {

@@ -3,8 +3,8 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { mulberry32 } from './utils.js';
 import { createTreeMaterials, generateTree, getTreeState, getTreeMaterials } from './tree.js';
 import { assignWordsToLeaves, createTreeWordSprites, getLeafWordSprites, startRainSprites, getRainSprites, cleanupRainSprites, initRaycasting, hidePopup } from './words.js';
-import { getPhase, startRainGrowth, skipToDone, updateRainGrowthPhase, updateBrightenPhase, consumePendingVillageUpdate, setPendingVillageUpdate } from './intro.js';
-import { initVillage, updateVillageMood as applyVillageMood, animateVillage, isInitialized as isVillageInitialized, getVillageMood } from './village.js';
+import { getPhase, startRainGrowth, skipToDone, updateRainGrowthPhase, updateBrightenPhase, consumePendingVillageUpdate, setPendingVillageUpdate, getIntroProgress } from './intro.js';
+import { initVillage, updateVillageMood as applyVillageMood, animateVillage, isInitialized as isVillageInitialized, getVillageMood, setVillageGrowthProgress, setVillageTimeScale } from './village.js';
 import { animateSkyEntity } from './sky-entity.js';
 
 // ══════════════════════════════════════════
@@ -201,6 +201,15 @@ window.initTreeWords = function(wordData, uniqueWords, totalWords, strata) {
     assignWordsToLeaves(wordData, leafPositions, leafStartPerLevel);
     createTreeWordSprites(scene, leafPositions);
 
+    // Create village objects (hidden) for time-lapse growth during intro
+    if (!isVillageInitialized()) {
+        const isIntro = getPhase() === 'waiting';
+        initVillage(scene, totalWords, isIntro);
+        if (isIntro) {
+            setVillageTimeScale(8); // fast-forward villagers during time-lapse
+        }
+    }
+
     if (getPhase() === 'waiting') {
         const rng = mulberry32(314);
         startRainSprites(scene, wordData.map(w => w.word), maxTreeY, rng);
@@ -249,8 +258,38 @@ function animate() {
     if (phase === 'rainGrowth') {
         const deps = getIntroDeps();
         const done = updateRainGrowthPhase(dt, t, deps);
+
+        // Village time-lapse: grow alongside tree
+        const growthP = getIntroProgress();
+        setVillageGrowthProgress(growthP);
+
+        // Day/night cycling: ~4 full cycles during intro
+        const dayNight = Math.sin(growthP * Math.PI * 8); // -1 to 1
+        const dayFactor = dayNight * 0.5 + 0.5; // 0 (night) to 1 (day)
+        const baseBrightness = 0.3 + dayFactor * 0.25; // 0.3–0.55 range during intro
+        deps.skyUniforms.brightness.value = baseBrightness;
+        deps.dirLight.intensity = deps.TARGET_DIR * deps.RAIN_FRAC * (0.15 + dayFactor * 0.85);
+        deps.ambient.intensity = deps.TARGET_AMB * deps.RAIN_FRAC * (0.3 + dayFactor * 0.7);
+
+        // Sky color shifts: warm orange-pink at dawn/dusk, dark blue at night
+        const nightBlue = new THREE.Color(0x0a1533);
+        const dayBlue = new THREE.Color(0x1a55aa);
+        deps.skyUniforms.topColor.value.copy(nightBlue).lerp(dayBlue, dayFactor);
+        const nightMid = new THREE.Color(0x112244);
+        const dayMid = new THREE.Color(0x4499dd);
+        deps.skyUniforms.midColor.value.copy(nightMid).lerp(dayMid, dayFactor);
+
+        // Stars visible at night
+        deps.starMat.opacity = (1 - dayFactor) * 0.3;
+
+        // Window glow brighter at night
+        // (handled implicitly by emissive materials being more visible in darkness)
+
         if (done) {
             cleanupRainSprites(scene);
+            // Ensure full village is revealed
+            setVillageGrowthProgress(1);
+            setVillageTimeScale(1);
         }
     }
 
@@ -259,6 +298,7 @@ function animate() {
         const deps = getIntroDeps();
         const done = updateBrightenPhase(dt, deps);
         if (done) {
+            setVillageTimeScale(1);
             onIntroComplete();
         }
     }

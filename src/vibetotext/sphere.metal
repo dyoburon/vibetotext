@@ -130,16 +130,17 @@ fragment float4 fragment_sphere(SphereVOut in [[stage_in]],
     // Power curve pushes most values toward the dim end
     opacity = pow(opacity, 3.0) * 0.35 + 0.03;
 
-    // Dots at triangle vertices — bright where barycentric coord is near 1.0
-    float dotSize = 0.82;
-    float dotGlow = 0.6;
-    float maxBary = max(max(in.bary.x, in.bary.y), in.bary.z);
-    float dot = smoothstep(dotSize, 1.0, maxBary);
-    float glow = smoothstep(dotGlow, 1.0, maxBary) * 0.3;
+    // Panel edges — glow at triangle boundaries for Dyson sphere look
+    float edgeDist = min(min(in.bary.x, in.bary.y), in.bary.z);
+    float edge = smoothstep(0.05, 0.0, edgeDist);
+    edge *= (1.0 + sin(u.time * 2.0) * 0.3 + u.amplitude * 0.5);
+
+    // Subtle panel fill + rim lighting
+    float panelFill = 0.03;
     float fresnel = pow(1.0 - in.ndotv, 2.5) * 0.2;
 
     float3 col = float3(0.835, 0.349, 0.514);  // #D55983
-    float a = (dot + glow + fresnel) * opacity;
+    float a = (edge * 0.8 + panelFill + fresnel) * opacity;
     return float4(col * a, a);
 }
 

@@ -82,7 +82,7 @@ def _transcribe_audio(model, audio: np.ndarray, prompt: str) -> str:
 class Transcriber:
     """Transcribes audio using the optimal Whisper backend for the platform."""
 
-    def __init__(self, model_name: str = "large-v3-turbo", custom_words: list[str] | None = None):
+    def __init__(self, model_name: str = "small", custom_words: list[str] | None = None):
         """
         Initialize transcriber.
 

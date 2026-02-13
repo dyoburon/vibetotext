@@ -30,12 +30,11 @@ with open(_shader_path, "r") as _f:
 
 # ─── Mesh generation ─────────────────────────────────────────────────────────
 
-def generate_sphere_mesh(n_lat=20, n_lon=30):
-    """UV sphere with barycentric coords for wireframe rendering.
+def generate_sphere_mesh(n_lat=16, n_lon=24):
+    """UV sphere with barycentric coords for panelized edge rendering.
     Returns (vertex_bytes, num_vertices).
     Vertex layout: position(3f) + normal(3f) + barycentric(3f) = 36 bytes.
     """
-    # Generate grid positions (normals = positions for unit sphere)
     grid = []
     for i in range(n_lat + 1):
         phi = math.pi * i / n_lat
@@ -59,18 +58,14 @@ def generate_sphere_mesh(n_lat=20, n_lon=30):
             p01 = grid[i + 1][j]
             p11 = grid[i + 1][j + 1]
 
-            # Triangle 1: p00, p10, p01
             for k, p in enumerate((p00, p10, p01)):
                 b = bary[k]
                 data.extend(struct.pack('9f',
                     p[0], p[1], p[2], p[0], p[1], p[2], b[0], b[1], b[2]))
-
-            # Triangle 2: p10, p11, p01
             for k, p in enumerate((p10, p11, p01)):
                 b = bary[k]
                 data.extend(struct.pack('9f',
                     p[0], p[1], p[2], p[0], p[1], p[2], b[0], b[1], b[2]))
-
             num_verts += 6
 
     return bytes(data), num_verts
@@ -137,7 +132,7 @@ class MetalRenderer:
         self.fn_f_composite = lib.newFunctionWithName_("fragment_composite")
 
         # Sphere mesh
-        mesh_data, self.num_verts = generate_sphere_mesh(16, 24)
+        mesh_data, self.num_verts = generate_sphere_mesh()
         self.vertex_buf = self.device.newBufferWithBytes_length_options_(
             mesh_data, len(mesh_data), 0  # MTLResourceStorageModeShared
         )

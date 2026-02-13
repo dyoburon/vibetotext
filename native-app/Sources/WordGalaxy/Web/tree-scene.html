@@ -287,7 +287,31 @@ let leaves = null, blooms = null;
 let leafPositions = [], bloomPositions = [];
 let maxTreeY = 0;
 let leafStartPerLevel = []; // tracks which leaf indices belong to each trunk level
-let fruitMeshes = [];
+let leafWordSprites = [];
+const wordTexCache = new Map();
+
+function makeWordSprite(word, color, scale) {
+    const key = word + color;
+    let tex = wordTexCache.get(key);
+    if (!tex) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 512; canvas.height = 64;
+        const ctx = canvas.getContext('2d');
+        ctx.font = 'bold 32px monospace';
+        ctx.fillStyle = color;
+        ctx.textBaseline = 'middle';
+        ctx.textAlign = 'center';
+        ctx.fillText(word, 256, 32);
+        tex = new THREE.CanvasTexture(canvas);
+        wordTexCache.set(key, tex);
+    }
+    const mat = new THREE.SpriteMaterial({
+        map: tex, transparent: true, depthWrite: false
+    });
+    const sprite = new THREE.Sprite(mat);
+    sprite.scale.set(scale, scale * 0.14, 1);
+    return sprite;
+}
 
 // ══════════════════════════════════════════
 // ── STRATA-DRIVEN TREE GENERATION ──
@@ -445,12 +469,7 @@ function generateTree(seed, uniqueWords, strata) {
         scene.add(mesh);
     }
 
-    // ── Create Points ──
-    const leafGeo = new THREE.BufferGeometry();
-    leafGeo.setAttribute('position', new THREE.Float32BufferAttribute(leafPositions, 3));
-    leaves = new THREE.Points(leafGeo, leafMat);
-    scene.add(leaves);
-
+    // ── Create Points (blooms only, leaves are word sprites) ──
     const bloomGeo = new THREE.BufferGeometry();
     bloomGeo.setAttribute('position', new THREE.Float32BufferAttribute(bloomPositions, 3));
     blooms = new THREE.Points(bloomGeo, bloomMat);
@@ -469,13 +488,12 @@ function generateTree(seed, uniqueWords, strata) {
 
 const leafWords = [];
 const raycaster = new THREE.Raycaster();
-raycaster.params.Points.threshold = 0.15;
 
 let mouseDownPos = null;
 renderer.domElement.addEventListener('mousedown', e => { mouseDownPos = { x: e.clientX, y: e.clientY }; });
 
 renderer.domElement.addEventListener('click', e => {
-    if (!leaves) return;
+    if (leafWordSprites.length === 0) return;
     if (mouseDownPos) {
         const dx = e.clientX - mouseDownPos.x, dy = e.clientY - mouseDownPos.y;
         if (Math.sqrt(dx * dx + dy * dy) > 5) return;
@@ -485,14 +503,14 @@ renderer.domElement.addEventListener('click', e => {
         -(e.clientY / window.innerHeight) * 2 + 1
     );
     raycaster.setFromCamera(mouse, camera);
-    const hits = raycaster.intersectObject(leaves);
-    if (hits.length > 0 && leafWords[hits[0].index]) showPopup(leafWords[hits[0].index], e.clientX, e.clientY);
+    const hits = raycaster.intersectObjects(leafWordSprites);
+    if (hits.length > 0 && hits[0].object.userData.wd) showPopup(hits[0].object.userData.wd, e.clientX, e.clientY);
     else hidePopup();
 });
 
 let hoverThrottle = null;
 renderer.domElement.addEventListener('pointermove', e => {
-    if (hoverThrottle || !leaves) return;
+    if (hoverThrottle || leafWordSprites.length === 0) return;
     hoverThrottle = setTimeout(() => {
         hoverThrottle = null;
         const mouse = new THREE.Vector2(
@@ -500,8 +518,8 @@ renderer.domElement.addEventListener('pointermove', e => {
             -(e.clientY / window.innerHeight) * 2 + 1
         );
         raycaster.setFromCamera(mouse, camera);
-        const hits = raycaster.intersectObject(leaves);
-        renderer.domElement.style.cursor = (hits.length > 0 && leafWords[hits[0].index]) ? 'pointer' : '';
+        const hits = raycaster.intersectObjects(leafWordSprites);
+        renderer.domElement.style.cursor = (hits.length > 0 && hits[0].object.userData.wd) ? 'pointer' : '';
     }, 50);
 });
 
@@ -594,9 +612,8 @@ function skipToDone() {
     introPhase = 'done';
     growthClip.constant = maxTreeY + 5;
     barkMat.clippingPlanes = [];
-    leafMat.clippingPlanes = [];
     bloomMat.clippingPlanes = [];
-    for (const m of fruitMeshes) m.material.clippingPlanes = [];
+    for (const s of leafWordSprites) s.visible = true;
     dirLight.intensity = TARGET_DIR;
     ambient.intensity = TARGET_AMB;
     hemiLight.intensity = TARGET_HEMI;
@@ -607,39 +624,54 @@ function skipToDone() {
     glowMat.opacity = 0.25;
 }
 
-// ── Fruit placement for milestone words ──
-function placeFruit(fruitByTier) {
-    for (const m of fruitMeshes) scene.remove(m);
-    fruitMeshes = [];
+// ── Create word sprites on tree ──
+function createTreeWordSprites() {
+    for (const s of leafWordSprites) { scene.remove(s); s.material.dispose(); }
+    leafWordSprites = [];
 
-    const tiers = [
-        { indices: fruitByTier.tier1, radius: 0.07, color: 0xcc2211, emissive: 0x220000 },
-        { indices: fruitByTier.tier2, radius: 0.11, color: 0xff7700, emissive: 0x331100 },
-        { indices: fruitByTier.tier3, radius: 0.16, color: 0xffcc00, emissive: 0x554400 },
-    ];
-    const dummy = new THREE.Object3D();
-    for (const tier of tiers) {
-        if (tier.indices.length === 0) continue;
-        const geo = new THREE.SphereGeometry(tier.radius, 8, 8);
-        const mat = new THREE.MeshStandardMaterial({
-            color: tier.color, emissive: tier.emissive,
-            roughness: 0.3, metalness: 0.15,
-            clippingPlanes: [growthClip]
-        });
-        const mesh = new THREE.InstancedMesh(geo, mat, tier.indices.length);
-        for (let i = 0; i < tier.indices.length; i++) {
-            const li = tier.indices[i];
-            dummy.position.set(
+    // Group leaf indices by word
+    const totalLeaves = leafPositions.length / 3;
+    const wordLeafMap = new Map();
+    for (let i = 0; i < totalLeaves; i++) {
+        const wd = leafWords[i];
+        if (!wd) continue;
+        if (!wordLeafMap.has(wd.word)) wordLeafMap.set(wd.word, { wd, indices: [] });
+        wordLeafMap.get(wd.word).indices.push(i);
+    }
+
+    // Create sprites: 1-3 per word based on frequency
+    for (const [word, data] of wordLeafMap) {
+        const { wd, indices } = data;
+        // Color by milestone tier
+        let color;
+        if (wd.count >= 1000) color = '#ffcc00';
+        else if (wd.count >= 500) color = '#ff8800';
+        else if (wd.count >= 100) color = '#ee3322';
+        else color = '#44cc22';
+
+        // Size scales with frequency
+        const scale = 1.0 + Math.log2(Math.max(1, wd.count)) * 0.15;
+
+        // Number of copies: common words get more coverage
+        let copies = 1;
+        if (wd.count >= 200) copies = 3;
+        else if (wd.count >= 50) copies = 2;
+        copies = Math.min(copies, indices.length);
+
+        const step = Math.max(1, Math.floor(indices.length / copies));
+        for (let c = 0; c < copies; c++) {
+            const li = indices[Math.min(c * step, indices.length - 1)];
+            const sprite = makeWordSprite(word, color, scale);
+            sprite.position.set(
                 leafPositions[li * 3],
-                leafPositions[li * 3 + 1] - tier.radius * 0.5,
+                leafPositions[li * 3 + 1],
                 leafPositions[li * 3 + 2]
             );
-            dummy.updateMatrix();
-            mesh.setMatrixAt(i, dummy.matrix);
+            sprite.userData.wd = wd;
+            sprite.visible = false; // hidden until growth reveals
+            scene.add(sprite);
+            leafWordSprites.push(sprite);
         }
-        mesh.instanceMatrix.needsUpdate = true;
-        scene.add(mesh);
-        fruitMeshes.push(mesh);
     }
 }
 
@@ -675,17 +707,8 @@ window.initTreeWords = function(wordData, uniqueWords, totalWords, strata) {
         leafIdx++;
     }
 
-    // Place fruit at milestone word leaves (one per word)
-    const fruitPlaced = new Set();
-    const fruitByTier = { tier1: [], tier2: [], tier3: [] };
-    for (let i = 0; i < totalLeaves; i++) {
-        const wd = leafWords[i];
-        if (!wd || fruitPlaced.has(wd.word)) continue;
-        if (wd.count >= 1000) { fruitByTier.tier3.push(i); fruitPlaced.add(wd.word); }
-        else if (wd.count >= 500) { fruitByTier.tier2.push(i); fruitPlaced.add(wd.word); }
-        else if (wd.count >= 100) { fruitByTier.tier1.push(i); fruitPlaced.add(wd.word); }
-    }
-    placeFruit(fruitByTier);
+    // Create word sprites on the tree
+    createTreeWordSprites();
 
     // Start simultaneous rain + growth
     if (introPhase === 'waiting') {
@@ -719,11 +742,6 @@ function getSeasonColor(season) {
 
 window.updateTreeData = function(health, season, streak, growth) {
     treeHealth = health; treeSeason = season; streakTier = streak;
-    const col = getSeasonColor(season);
-    col.lerp(new THREE.Color(0x553311), 1.0 - health);
-    leafMat.color.copy(col);
-    leafMat.opacity = 0.4 + 0.6 * health;
-    leafMat.size = 0.06 + 0.06 * health;
     bloomMat.opacity = streak > 0 ? 0.8 : 0.0;
     bloomMat.size = 0.10 + 0.06 * Math.min(streak, 4);
 };
@@ -749,7 +767,11 @@ function animate() {
         const spreadW = Math.max(20, maxTreeY * 1.5);
 
         // Tree grows
-        growthClip.constant = growthP * (maxTreeY + 2);
+        const clipY = growthP * (maxTreeY + 2);
+        growthClip.constant = clipY;
+
+        // Show word sprites below clip plane
+        for (const s of leafWordSprites) s.visible = s.position.y < clipY;
 
         // Fireflies appear with tree
         fireflyMat.opacity = growthP * 0.4;
@@ -811,9 +833,8 @@ function animate() {
         if (phaseTimer >= BRIGHTEN_DUR) {
             introPhase = 'done';
             barkMat.clippingPlanes = [];
-            leafMat.clippingPlanes = [];
             bloomMat.clippingPlanes = [];
-            for (const m of fruitMeshes) m.material.clippingPlanes = [];
+            for (const s of leafWordSprites) s.visible = true;
         }
     }
 

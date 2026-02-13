@@ -50,6 +50,16 @@ def main():
         help="Hotkey for implementation plan mode (default: cmd+alt+p)",
     )
     parser.add_argument(
+        "--history-hotkey",
+        default="ctrl+alt",
+        help="Hotkey to toggle history window (default: ctrl+alt)",
+    )
+    parser.add_argument(
+        "--viz-hotkey",
+        default="cmd+ctrl+g",
+        help="Hotkey to open Word Galaxy visualization (default: cmd+ctrl+g)",
+    )
+    parser.add_argument(
         "--codebase",
         default=None,
         help="Path to codebase for Greppy search (default: datafeeds)",
@@ -129,6 +139,8 @@ def main():
         args.greppy_hotkey: "greppy",
         args.cleanup_hotkey: "cleanup",
         args.plan_hotkey: "plan",
+        args.history_hotkey: "history",
+        args.viz_hotkey: "viz",
     }
     listener = HotkeyListener(hotkeys=hotkeys)
 
@@ -144,13 +156,49 @@ def main():
     print(f"  [{args.greppy_hotkey}] = Greppy search + attach files")
     print(f"  [{args.cleanup_hotkey}] = cleanup/refine with Gemini")
     print(f"  [{args.plan_hotkey}] = implementation plan with Gemini")
+    print(f"  [{args.history_hotkey}] = toggle history window")
+    print(f"  [{args.viz_hotkey}] = open Word Galaxy visualization")
     print("Press Ctrl+C to exit.\n")
 
     # Preload model
     _ = transcriber.model
 
+    def open_history_app():
+        """Open the history Electron app."""
+        import subprocess
+        history_app_dir = Path(__file__).parent.parent.parent / "history-app"
+        if history_app_dir.exists():
+            subprocess.Popen(
+                ["npm", "start"],
+                cwd=str(history_app_dir),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            print("[HISTORY] Opening history app...")
+        else:
+            print("[HISTORY] history-app/ directory not found.")
+
+    def open_viz():
+        """Open the Word Galaxy visualization."""
+        import subprocess
+        viz_dir = Path(__file__).parent.parent.parent / "native-app"
+        binary = viz_dir / ".build" / "debug" / "WordGalaxy"
+        if binary.exists():
+            subprocess.Popen([str(binary)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            print("[VIZ] Opening Word Galaxy...")
+        else:
+            print("[VIZ] WordGalaxy binary not found. Run 'swift build' in native-app/ first.")
+
     def on_start(mode):
         try:
+            # Non-recording modes: handle immediately and return
+            if mode == "history":
+                open_history_app()
+                return
+            if mode == "viz":
+                open_viz()
+                return
+
             current_mode[0] = mode
             mode_labels = {"greppy": "Greppy", "cleanup": "Cleanup", "transcribe": "Transcribe", "plan": "Plan"}
             mode_label = mode_labels.get(mode, "Transcribe")
@@ -179,6 +227,10 @@ def main():
 
     def on_stop(mode):
         try:
+            # Non-recording modes: nothing to do on release
+            if mode in ("history", "viz"):
+                return
+
             audio = recorder.stop()
             if ui:
                 ui.hide_recording()

@@ -10,11 +10,15 @@ struct TreeWebView: NSViewRepresentable {
     let uniqueWords: Int
     let totalWords: Int
     let strataJSON: String
+    let mood: Float
+    let population: Int
+    let recentTrend: Float
 
     func makeNSView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         config.preferences.setValue(true, forKey: "allowFileAccessFromFileURLs")
         config.userContentController.add(context.coordinator, name: "treeReady")
+        config.userContentController.add(context.coordinator, name: "requestVillageUpdate")
 
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.setValue(false, forKey: "drawsBackground")
@@ -26,6 +30,12 @@ struct TreeWebView: NSViewRepresentable {
     func updateNSView(_ nsView: WKWebView, context: Context) {
         let coord = context.coordinator
 
+        // Store current village data so coordinator can re-send on request
+        coord.currentMood = mood
+        coord.currentPopulation = population
+        coord.currentTrend = recentTrend
+        coord.currentTotalWords = totalWords
+
         // Send word data once the page is ready
         if !coord.introStarted && wordDataJSON != "[]" {
             coord.pendingWordDataJSON = wordDataJSON
@@ -36,7 +46,10 @@ struct TreeWebView: NSViewRepresentable {
         }
 
         // Ongoing tree data updates
-        let js = "if(window.updateTreeData) window.updateTreeData(\(health), \(season), \(streakTier), \(growthProgress))"
+        let js = """
+        if(window.updateTreeData) window.updateTreeData(\(health), \(season), \(streakTier), \(growthProgress));
+        if(window.updateVillageMood) window.updateVillageMood(\(mood), \(population), \(recentTrend), \(totalWords));
+        """
         nsView.evaluateJavaScript(js, completionHandler: nil)
     }
 
@@ -50,6 +63,10 @@ struct TreeWebView: NSViewRepresentable {
         var pendingUniqueWords: Int = 0
         var pendingTotalWords: Int = 0
         var pendingStrataJSON: String = "[]"
+        var currentMood: Float = 0.0
+        var currentPopulation: Int = 0
+        var currentTrend: Float = 0.0
+        var currentTotalWords: Int = 0
 
         func userContentController(
             _ userContentController: WKUserContentController,
@@ -58,6 +75,12 @@ struct TreeWebView: NSViewRepresentable {
             if message.name == "treeReady" {
                 pageReady = true
                 tryInit()
+            } else if message.name == "requestVillageUpdate" {
+                // Re-send current village data after intro completes
+                webView?.evaluateJavaScript(
+                    "if(window.updateVillageMood) window.updateVillageMood(\(currentMood), \(currentPopulation), \(currentTrend), \(currentTotalWords))",
+                    completionHandler: nil
+                )
             }
         }
 

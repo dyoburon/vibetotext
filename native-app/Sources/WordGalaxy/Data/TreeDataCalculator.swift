@@ -1,5 +1,13 @@
 import Foundation
 
+struct MoodEntry: Identifiable {
+    let id = UUID()
+    let text: String
+    let sentiment: Double
+    let hoursAgo: Float
+    let weight: Float // how much this entry contributed to mood
+}
+
 struct TreeData {
     let health: Float
     let streak: Int
@@ -12,9 +20,20 @@ struct TreeData {
     let streakLabel: String
     let growthLabel: String
 
+    // Village sentiment data
+    let mood: Float          // -1.0 to +1.0
+    let moodLabel: String
+    let population: Int
+    let recentTrend: Float   // -1.0 to +1.0
+
+    // Mood breakdown: top positive and negative contributors
+    let moodBreakdown: [MoodEntry]
+
     static let placeholder = TreeData(
         health: 0.85, streak: 0, streakTier: 0, season: 0.5, growthProgress: 0.0,
-        healthLabel: "—", seasonLabel: "—", streakLabel: "—", growthLabel: "—"
+        healthLabel: "—", seasonLabel: "—", streakLabel: "—", growthLabel: "—",
+        mood: 0.0, moodLabel: "—", population: 0, recentTrend: 0.0,
+        moodBreakdown: []
     )
 }
 
@@ -23,7 +42,9 @@ enum TreeDataCalculator {
         guard !entries.isEmpty else {
             return TreeData(
                 health: 0.3, streak: 0, streakTier: 0, season: 0.0, growthProgress: 0.0,
-                healthLabel: "30%", seasonLabel: "Winter", streakLabel: "None", growthLabel: "0%"
+                healthLabel: "30%", seasonLabel: "Winter", streakLabel: "None", growthLabel: "0%",
+                mood: 0.0, moodLabel: "Neutral", population: 0, recentTrend: 0.0,
+                moodBreakdown: []
             )
         }
 
@@ -93,6 +114,62 @@ enum TreeDataCalculator {
         let streakLabel = streak == 0 ? "None" : "\(streak) days"
         let growthLabel = "\(Int(growthProgress * 100))%"
 
+        // ── Mood: exponentially-weighted sentiment average ──
+        let decayPerHour: Float = 0.98
+        let maxAgeHours: Float = 336.0 // 14 days
+        var weightedSum: Float = 0
+        var weightSum: Float = 0
+        for entry in entries {
+            guard let s = entry.sentiment else { continue }
+            let hoursAgo = Float(now.timeIntervalSince(entry.timestamp)) / 3600.0
+            if hoursAgo > maxAgeHours { continue }
+            let weight = pow(decayPerHour, hoursAgo)
+            weightedSum += Float(s) * weight
+            weightSum += weight
+        }
+        let mood = weightSum > 0 ? max(-1.0, min(1.0, weightedSum / weightSum)) : Float(0.0)
+
+        // ── Recent trend: last 24h avg vs previous 24h avg ──
+        let oneDayAgo = calendar.date(byAdding: .day, value: -1, to: now)!
+        let twoDaysAgo = calendar.date(byAdding: .day, value: -2, to: now)!
+        let recentScores = entries.filter { $0.timestamp >= oneDayAgo }.compactMap { $0.sentiment }
+        let olderScores = entries.filter { $0.timestamp >= twoDaysAgo && $0.timestamp < oneDayAgo }.compactMap { $0.sentiment }
+        let recentAvg = recentScores.isEmpty ? 0.0 : Float(recentScores.reduce(0, +)) / Float(recentScores.count)
+        let olderAvg = olderScores.isEmpty ? recentAvg : Float(olderScores.reduce(0, +)) / Float(olderScores.count)
+        let recentTrend = max(-1.0, min(1.0, (recentAvg - olderAvg) * 2.0))
+
+        // ── Population: based on entry count scaled by mood ──
+        let basePop = min(entries.count / 5, 50)
+        let moodMultiplier = 0.3 + 0.7 * Double((mood + 1.0) / 2.0)
+        let population = max(1, Int(Double(basePop) * moodMultiplier))
+
+        // ── Mood label ──
+        let moodLabel: String
+        if mood > 0.5 { moodLabel = "Radiant" }
+        else if mood > 0.15 { moodLabel = "Warm" }
+        else if mood > -0.15 { moodLabel = "Neutral" }
+        else if mood > -0.5 { moodLabel = "Cold" }
+        else { moodLabel = "Hostile" }
+
+        // ── Mood breakdown: top positive & negative weighted contributors ──
+        var moodEntries: [MoodEntry] = []
+        for entry in entries {
+            guard let s = entry.sentiment else { continue }
+            let hoursAgo = Float(now.timeIntervalSince(entry.timestamp)) / 3600.0
+            if hoursAgo > maxAgeHours { continue }
+            let weight = pow(decayPerHour, hoursAgo)
+            let snippet = String(entry.text.prefix(80))
+            moodEntries.append(MoodEntry(text: snippet, sentiment: s, hoursAgo: hoursAgo, weight: weight))
+        }
+        // Sort by absolute weighted impact (sentiment * weight), take top 5 positive + top 5 negative
+        let positive = moodEntries.filter { $0.sentiment > 0.05 }
+            .sorted { abs($0.sentiment) * Double($0.weight) > abs($1.sentiment) * Double($1.weight) }
+            .prefix(5)
+        let negative = moodEntries.filter { $0.sentiment < -0.05 }
+            .sorted { abs($0.sentiment) * Double($0.weight) > abs($1.sentiment) * Double($1.weight) }
+            .prefix(5)
+        let moodBreakdown = Array(negative) + Array(positive)
+
         return TreeData(
             health: health,
             streak: streak,
@@ -102,7 +179,12 @@ enum TreeDataCalculator {
             healthLabel: healthLabel,
             seasonLabel: seasonLabel,
             streakLabel: streakLabel,
-            growthLabel: growthLabel
+            growthLabel: growthLabel,
+            mood: mood,
+            moodLabel: moodLabel,
+            population: population,
+            recentTrend: recentTrend,
+            moodBreakdown: moodBreakdown
         )
     }
 }

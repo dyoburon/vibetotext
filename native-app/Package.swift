@@ -9,7 +9,7 @@ let package = Package(
             name: "WordGalaxy",
             path: "Sources/WordGalaxy",
             resources: [
-                .copy("Web/tree-scene.html"),
+                .copy("Web"),
             ],
             linkerSettings: [
                 .linkedFramework("Metal"),

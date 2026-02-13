@@ -98,6 +98,17 @@ struct TreeContainerView: View {
                         value: appState.treeData.growthLabel,
                         color: Color(red: 0.984, green: 0.749, blue: 0.141)
                     )
+                    MoodStatItem(
+                        value: appState.treeData.moodLabel,
+                        color: moodColor(appState.treeData.mood),
+                        mood: appState.treeData.mood,
+                        breakdown: appState.treeData.moodBreakdown
+                    )
+                    TreeStatItem(
+                        label: "Pop.",
+                        value: "\(appState.treeData.population)",
+                        color: .white
+                    )
                 }
             }
             .padding(.horizontal, 20)
@@ -112,7 +123,10 @@ struct TreeContainerView: View {
                 wordDataJSON: appState.treeWordDataJSON,
                 uniqueWords: appState.uniqueWords,
                 totalWords: appState.totalWords,
-                strataJSON: appState.treeStrataJSON
+                strataJSON: appState.treeStrataJSON,
+                mood: appState.treeData.mood,
+                population: appState.treeData.population,
+                recentTrend: appState.treeData.recentTrend
             )
         }
         .background(.black)
@@ -130,6 +144,13 @@ struct TreeContainerView: View {
         if season > 0.15 { return Color(red: 0.9, green: 0.55, blue: 0.15) }
         return Color(red: 0.5, green: 0.42, blue: 0.3)
     }
+
+    private func moodColor(_ mood: Float) -> Color {
+        if mood > 0.3 { return .green }
+        if mood > 0.0 { return Color(red: 0.5, green: 0.85, blue: 0.4) }
+        if mood > -0.3 { return .yellow }
+        return .red
+    }
 }
 
 private struct TreeStatItem: View {
@@ -146,5 +167,120 @@ private struct TreeStatItem: View {
                 .font(.system(size: 10))
                 .foregroundColor(Color(white: 0.5))
         }
+    }
+}
+
+private struct MoodStatItem: View {
+    let value: String
+    let color: Color
+    let mood: Float
+    let breakdown: [MoodEntry]
+    @State private var isHovering = false
+
+    var body: some View {
+        VStack(spacing: 2) {
+            Text(value)
+                .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                .foregroundColor(color)
+            Text("Mood")
+                .font(.system(size: 10))
+                .foregroundColor(Color(white: 0.5))
+        }
+        .onHover { hovering in
+            isHovering = hovering
+        }
+        .popover(isPresented: $isHovering, arrowEdge: .bottom) {
+            MoodBreakdownPopover(mood: mood, breakdown: breakdown)
+        }
+    }
+}
+
+private struct MoodBreakdownPopover: View {
+    let mood: Float
+    let breakdown: [MoodEntry]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("AI Mood: \(moodEmoji)")
+                    .font(.system(size: 14, weight: .bold))
+                Text(String(format: "%.0f%%", (mood + 1) / 2 * 100))
+                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                    .foregroundColor(moodColor)
+            }
+
+            if breakdown.isEmpty {
+                Text("No sentiment data yet")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+            } else {
+                let negatives = breakdown.filter { $0.sentiment < 0 }
+                let positives = breakdown.filter { $0.sentiment > 0 }
+
+                if !positives.isEmpty {
+                    Text("Made me happy:")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(.green)
+                    ForEach(positives) { entry in
+                        sentimentRow(entry)
+                    }
+                }
+
+                if !negatives.isEmpty {
+                    Text("Made me upset:")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(.red)
+                        .padding(.top, positives.isEmpty ? 0 : 4)
+                    ForEach(negatives) { entry in
+                        sentimentRow(entry)
+                    }
+                }
+            }
+        }
+        .padding(12)
+        .frame(width: 300)
+    }
+
+    private func sentimentRow(_ entry: MoodEntry) -> some View {
+        HStack(alignment: .top, spacing: 6) {
+            Text(entry.sentiment > 0 ? "+" : "")
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundColor(entry.sentiment > 0 ? .green : .red)
+            + Text(String(format: "%.0f%%", entry.sentiment * 100))
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundColor(entry.sentiment > 0 ? .green : .red)
+
+            Text(entry.text)
+                .font(.system(size: 11))
+                .foregroundColor(.primary)
+                .lineLimit(2)
+
+            Spacer()
+
+            Text(timeAgo(entry.hoursAgo))
+                .font(.system(size: 9))
+                .foregroundColor(.secondary)
+        }
+    }
+
+    private func timeAgo(_ hours: Float) -> String {
+        if hours < 1 { return "now" }
+        if hours < 24 { return "\(Int(hours))h" }
+        return "\(Int(hours / 24))d"
+    }
+
+    private var moodEmoji: String {
+        if mood > 0.5 { return "radiant" }
+        if mood > 0.15 { return "warm" }
+        if mood > -0.15 { return "neutral" }
+        if mood > -0.5 { return "cold" }
+        return "hostile"
+    }
+
+    private var moodColor: Color {
+        if mood > 0.3 { return .green }
+        if mood > 0.0 { return Color(red: 0.5, green: 0.85, blue: 0.4) }
+        if mood > -0.3 { return .yellow }
+        return .red
     }
 }

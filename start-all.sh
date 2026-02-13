@@ -10,7 +10,7 @@ cd "$BASE/history-app" && npm start &
 sleep 2
 
 echo "Starting VibeToText..."
-cd "$BASE" && source .venv/bin/activate && python -m vibetotext &
+cd "$BASE" && source .venv/bin/activate && python -m vibetotext --model large-v3-turbo &
 
 sleep 3
 

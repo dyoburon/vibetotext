@@ -55,7 +55,8 @@ A living 3D world that reacts to your voice in real time. As you dictate, a proc
 pip install -e .
 ```
 
-Optionally set `GEMINI_API_KEY` in a `.env` file to enable cleanup/plan modes.
+
+Optionally set `GEMINI_API_KEY` in a `.env` file to enable cleanup/plan modes. You can copy the `.env.example` file and then add your key.
 
 ### Platform Builds
 
@@ -77,4 +78,14 @@ Executables will be in the `dist/` folder. See `packaging/` for platform-specifi
 ```bash
 vibetotext              # Start with default hotkeys
 vibetotext --model base # Use specific Whisper model
+```
+
+## Start/Stop with History Application
+
+```bash
+start-all.sh
+```
+
+```bash
+stop-all.sh
 ```

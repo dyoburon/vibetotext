@@ -151,17 +151,9 @@ final class TreeWebViewStore: NSObject, ObservableObject, WKScriptMessageHandler
             let deltaY = event.scrollingDeltaY
             self.scrollLogCount += 1
             if self.scrollLogCount <= 10 || self.scrollLogCount % 100 == 0 {
-                scrollLog("SCROLL #\(self.scrollLogCount) deltaY=\(deltaY) — consumed, dispatching synthetic")
+                scrollLog("SCROLL #\(self.scrollLogCount) deltaY=\(deltaY) — calling applyZoom")
             }
-            webView.evaluateJavaScript("""
-                (function(){
-                    var c = document.querySelector('canvas');
-                    if(c) c.dispatchEvent(new WheelEvent('wheel', {
-                        deltaY: \(-deltaY), deltaMode: 0,
-                        bubbles: true, cancelable: true
-                    }));
-                })();
-            """, completionHandler: nil)
+            webView.evaluateJavaScript("window.applyZoom(\(deltaY))", completionHandler: nil)
             return nil
         }
 
@@ -173,15 +165,7 @@ final class TreeWebViewStore: NSObject, ObservableObject, WKScriptMessageHandler
 
             let delta = event.magnification * 200
             scrollLog("PINCH delta=\(delta)")
-            webView.evaluateJavaScript("""
-                (function(){
-                    var c = document.querySelector('canvas');
-                    if(c) c.dispatchEvent(new WheelEvent('wheel', {
-                        deltaY: \(-delta), deltaMode: 0,
-                        bubbles: true, cancelable: true
-                    }));
-                })();
-            """, completionHandler: nil)
+            webView.evaluateJavaScript("window.applyZoom(\(delta))", completionHandler: nil)
             return nil
         }
     }

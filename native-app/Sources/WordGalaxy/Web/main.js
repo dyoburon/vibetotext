@@ -42,17 +42,16 @@ controls.maxDistance = Infinity;
 controls.maxPolarAngle = Math.PI;
 controls.zoomSpeed = 1.2;
 
-// Log zoom behavior
-let wheelCount = 0;
-let lastDistLog = 0;
-renderer.domElement.addEventListener('wheel', function(e) {
-    wheelCount++;
+// Direct zoom function called from Swift — bypasses synthetic events entirely
+// Uses multiplicative scaling so zoom feels consistent at any distance
+window.applyZoom = function(deltaY) {
+    const dir = camera.position.clone().sub(controls.target).normalize();
     const dist = camera.position.distanceTo(controls.target);
-    // Log distance every 20 events to track if zoom is actually changing
-    if (wheelCount <= 5 || wheelCount % 20 === 0) {
-        console.log('[wheel] #' + wheelCount + ' dY=' + e.deltaY.toFixed(1) + ' dist=' + dist.toFixed(1) + ' trusted=' + e.isTrusted);
-    }
-});
+    const factor = Math.pow(0.998, deltaY); // multiplicative: works at any distance
+    const newDist = Math.max(controls.minDistance, Math.min(500, dist * factor));
+    camera.position.copy(controls.target).addScaledVector(dir, newDist);
+    controls.update();
+};
 
 // ── Sky ──
 const skyGeo = new THREE.SphereGeometry(150, 32, 16);

@@ -15,8 +15,6 @@ async function generateReferenceImage() {
 
     // Try multiple model IDs - Gemini image gen models
     const models = [
-        'gemini-2.5-flash-image',
-        'gemini-2.0-flash-exp-image-generation',
         'gemini-3-pro-image-preview',
     ];
 
@@ -39,13 +37,14 @@ async function generateReferenceImage() {
                             },
                             {
                                 text: `Edit this image: Remove the black hole / glowing ring entity in the upper left.
-Replace it with a giant ethereal cosmic being made of stars, constellations, and glowing blue-white energy.
-The being is NOT a realistic human — it's an abstract, ethereal humanoid shape. Think constellation god, cosmic spirit.
-The being is CURLED AROUND the planet, wrapping its whole body protectively around it like a parent curling around a child.
-Its torso, arms, and legs all curve and wrap around the sphere of the planet. The planet sits nestled inside the being's curled body.
-One arm/tendril extends outward to the right side of the image.
-IMPORTANT: The head should be a dark void / empty dark circle above the planet — do NOT draw a face. Just a dark featureless round shape where the current black hole ring is. Keep the glowing ring around the head.
-The body is translucent, made of connected stars with faint constellation lines, glowing cool blue-white against the dark sky. Wispy, ethereal, godlike.
+Replace it with a giant ethereal cosmic spirit creature — NOT human. Think Studio Ghibli forest spirit like the Forest Spirit from Princess Mononoke, or a Totoro-like cosmic guardian, or a No-Face-style mysterious robed entity.
+It should be a soft, rounded, non-humanoid creature shape — maybe like a large cloaked/robed spirit with no visible body underneath, just flowing cosmic robes and energy. Or a big gentle beast-like shape.
+It is curled tightly around the planet, cradling it closely and protectively with both arms/tendrils wrapped underneath and around the sphere — really holding it, not just sitting near it. The planet is nestled snugly against the creature's body like it's precious.
+Its left arm/tendril cradles the planet from below, reaching down low underneath it — supporting it from the bottom.
+One arm or tendril extends to the right.
+IMPORTANT: The head area should be a dark void / empty dark circle with the glowing purple ring around it like a halo — do NOT draw a face. Keep the ring from the original.
+The creature is made of translucent starlight and constellation patterns, glowing cool blue-white. Wearing flowing cosmic robes or cloaks that drape around it.
+Studio Ghibli art style — soft, painterly, magical, warm wonder.
 Keep the planet, village, and tree exactly as they are.`
                             }
                         ]

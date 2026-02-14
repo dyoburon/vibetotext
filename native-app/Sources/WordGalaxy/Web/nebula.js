@@ -10,6 +10,7 @@ let glowMat = null;
 let glowMesh = null;
 let sentenceSprites = [];   // { sprite, words: string[], originalText: string }
 let flyingWords = [];        // { sprite, startPos, endPos, progress, word, duration }
+let cometTrails = [];        // { sprite, life, maxLife } — glowing trail particles behind comets
 let fadeIn = 0;
 let initialized = false;
 let scene = null;
@@ -161,6 +162,52 @@ function renderSentenceCanvas(text) {
     ctx.textAlign = 'center';
     ctx.fillText(text, 256, 16);
     return canvas;
+}
+
+function renderCometCanvas(text) {
+    // Higher-res canvas so text is crisp when the comet is huge
+    const canvas = document.createElement('canvas');
+    canvas.width = 1024; canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    const fontSize = 32;
+    ctx.font = `bold ${fontSize}px monospace`;
+    // White-hot center text
+    ctx.fillStyle = 'rgba(255, 255, 240, 1.0)';
+    ctx.shadowColor = 'rgba(255, 200, 50, 1.0)';
+    ctx.shadowBlur = 20;
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'center';
+    // Draw twice for extra glow
+    ctx.fillText(text, 512, 32);
+    ctx.fillText(text, 512, 32);
+    return canvas;
+}
+
+function makeTrailParticle(position) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 64; canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    const grad = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+    grad.addColorStop(0, 'rgba(255, 220, 100, 1.0)');
+    grad.addColorStop(0.3, 'rgba(255, 160, 40, 0.8)');
+    grad.addColorStop(0.7, 'rgba(255, 80, 20, 0.3)');
+    grad.addColorStop(1, 'rgba(255, 40, 10, 0.0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 64, 64);
+
+    const tex = new THREE.CanvasTexture(canvas);
+    const mat = new THREE.SpriteMaterial({
+        map: tex,
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        opacity: 0.9,
+    });
+    const sprite = new THREE.Sprite(mat);
+    sprite.position.copy(position);
+    const s = 1.5 + Math.random() * 2.0;
+    sprite.scale.set(s, s, 1);
+    return sprite;
 }
 
 function makeSentenceSprite(text, words) {
@@ -456,20 +503,39 @@ export function addEntries(entries) {
                 // Initial load: place directly at target
                 sentEntry.sprite.position.copy(targetPos);
             } else {
-                // New entry: start below the nebula and fly in
+                // New entry: spawn outside skybox as blazing comet, fly to nebula center
+                const theta = rng() * Math.PI * 2;
+                const phi = rng() * Math.PI * 0.8 + 0.1;
+                const spawnR = 130 + rng() * 30;
                 const spawnPos = new THREE.Vector3(
-                    targetPos.x + (rng() - 0.5) * 10,
-                    -30 - rng() * 10,  // well below nebula
-                    targetPos.z + (rng() - 0.5) * 10
+                    Math.sin(phi) * Math.cos(theta) * spawnR,
+                    Math.cos(phi) * spawnR,
+                    Math.sin(phi) * Math.sin(theta) * spawnR
                 );
+
+                // Replace the sprite texture with high-res comet canvas
+                const cometCanvas = renderCometCanvas(chunk.text);
+                sentEntry.sprite.material.map.image = cometCanvas;
+                sentEntry.sprite.material.map.needsUpdate = true;
+
                 sentEntry.sprite.position.copy(spawnPos);
                 sentEntry.sprite.userData.flyIn = {
                     startX: spawnPos.x, startY: spawnPos.y, startZ: spawnPos.z,
                     progress: 0,
+                    trailTimer: 0,
                 };
-                // Start extra bright
-                sentEntry.sprite.userData.targetOpacity = 0.9;
-                sentEntry.sprite.scale.multiplyScalar(1.5);
+                // Fly to nebula center first (0,0,0 in local space), then drift to final pos
+                sentEntry.sprite.userData.flyTarget = { x: 0, y: 0, z: 0 };
+                sentEntry.sprite.userData.driftTo = { x: targetPos.x, y: targetPos.y, z: targetPos.z };
+                // Blazing white-hot comet
+                sentEntry.sprite.material.color.set(0xffffee);
+                sentEntry.sprite.userData.targetOpacity = 1.0;
+                sentEntry.sprite.userData.isComet = true;
+                // Store base scale for aspect-ratio-preserving animation
+                sentEntry.sprite.userData.baseScaleX = sentEntry.sprite.scale.x;
+                sentEntry.sprite.userData.baseScaleY = sentEntry.sprite.scale.y;
+                // 10x scale — about 1/8th the nebula, massive and unmissable
+                sentEntry.sprite.scale.multiplyScalar(10);
             }
 
             sentEntry.sprite.userData.baseX = targetPos.x;
@@ -482,7 +548,15 @@ export function addEntries(entries) {
         }
     }
 
-    if (isFirstLoad) isFirstLoad = false;
+    if (added > 0) console.log(`[nebula] added ${added} new entries as sprites`);
+    if (isFirstLoad) {
+        // Mark ALL original entries as seen so they don't re-appear on later updateNebula calls
+        for (const entry of entries) {
+            if (!entry.text || entry.text.trim().length === 0) continue;
+            seenTexts.add(entry.text.trim().substring(0, 100));
+        }
+        isFirstLoad = false;
+    }
 }
 
 // Called from Swift when new entries arrive
@@ -534,22 +608,79 @@ export function animateNebula(dt, t, cameraPosition) {
         const flyIn = ws.userData.flyIn;
 
         if (flyIn) {
-            // Fly-in animation: lerp from spawn to target over 1.5 seconds
-            flyIn.progress = Math.min(flyIn.progress + dt / 1.5, 1);
+            // Comet fly-in: 5 seconds for dramatic comets
+            const flightDur = ws.userData.isComet ? 5.0 : 1.5;
+            flyIn.progress = Math.min(flyIn.progress + dt / flightDur, 1);
             const ease = flyIn.progress * (2 - flyIn.progress); // ease-out
 
-            ws.position.x = flyIn.startX + (ws.userData.baseX - flyIn.startX) * ease;
-            ws.position.y = flyIn.startY + (ws.userData.baseY - flyIn.startY) * ease;
-            ws.position.z = flyIn.startZ + (ws.userData.baseZ - flyIn.startZ) * ease;
+            // Comets fly to nebula center; non-comets fly to their base position
+            const tgtX = ws.userData.flyTarget ? ws.userData.flyTarget.x : ws.userData.baseX;
+            const tgtY = ws.userData.flyTarget ? ws.userData.flyTarget.y : ws.userData.baseY;
+            const tgtZ = ws.userData.flyTarget ? ws.userData.flyTarget.z : ws.userData.baseZ;
 
-            // Bright glow during flight, settle to normal
-            ws.material.opacity = 0.9 * ease;
+            ws.position.x = flyIn.startX + (tgtX - flyIn.startX) * ease;
+            ws.position.y = flyIn.startY + (tgtY - flyIn.startY) * ease;
+            ws.position.z = flyIn.startZ + (tgtZ - flyIn.startZ) * ease;
+
+            if (ws.userData.isComet) {
+                // Blazing bright — full opacity immediately
+                ws.material.opacity = 1.0 * Math.min(flyIn.progress * 6, 1);
+
+                // Shrink from 10x to 1x, preserving aspect ratio
+                const cometMul = 10 - flyIn.progress * 9;
+                ws.scale.set(
+                    ws.userData.baseScaleX * cometMul,
+                    ws.userData.baseScaleY * cometMul,
+                    1
+                );
+
+                // White-hot at start, fade through gold to white at arrival
+                const p = flyIn.progress;
+                const r = 1.0;
+                const g = 0.85 + p * 0.15;
+                const b = 0.4 + p * 0.6;
+                ws.material.color.setRGB(r, g, b);
+
+                // Spawn trail particles at the comet's world position
+                flyIn.trailTimer = (flyIn.trailTimer || 0) + dt;
+                if (flyIn.trailTimer > 0.04 && flyIn.progress < 0.9) {
+                    flyIn.trailTimer = 0;
+                    const worldPos = new THREE.Vector3();
+                    ws.getWorldPosition(worldPos);
+                    const trail = makeTrailParticle(worldPos);
+                    // Scale trail particles relative to comet size
+                    const trailS = 2.0 + cometMul * 0.5;
+                    trail.scale.set(trailS, trailS, 1);
+                    scene.add(trail);
+                    cometTrails.push({ sprite: trail, life: 0, maxLife: 1.5 + Math.random() * 1.0 });
+                }
+            } else {
+                ws.material.opacity = 0.9 * ease;
+            }
 
             if (flyIn.progress >= 1) {
-                // Settle to normal size/opacity
-                ws.scale.multiplyScalar(1 / 1.5);
+                // Settle: swap back to normal-res texture, normal size/opacity/color
+                const normalCanvas = renderSentenceCanvas(entry.originalText || entry.words.join(' '));
+                ws.material.map.image = normalCanvas;
+                ws.material.map.needsUpdate = true;
+                ws.scale.set(ws.userData.baseScaleX || 1, ws.userData.baseScaleY || 1, 1);
+                ws.material.color.set(0xffffff);
                 ws.userData.targetOpacity = 0.5 + rng() * 0.4;
                 delete ws.userData.flyIn;
+                delete ws.userData.isComet;
+                delete ws.userData.baseScaleX;
+                delete ws.userData.baseScaleY;
+                delete ws.userData.flyTarget;
+
+                // Start drifting from center to final nebula position
+                if (ws.userData.driftTo) {
+                    ws.userData.drift = {
+                        fromX: ws.position.x, fromY: ws.position.y, fromZ: ws.position.z,
+                        toX: ws.userData.driftTo.x, toY: ws.userData.driftTo.y, toZ: ws.userData.driftTo.z,
+                        progress: 0,
+                    };
+                    delete ws.userData.driftTo;
+                }
             }
         } else if (ws.userData.fadeOut) {
             ws.material.opacity -= dt * 0.5;
@@ -561,11 +692,40 @@ export function animateNebula(dt, t, cameraPosition) {
                 sentenceSprites.splice(i, 1);
             }
         } else {
+            // Drift from center to final position after comet lands
+            const drift = ws.userData.drift;
+            if (drift) {
+                drift.progress = Math.min(drift.progress + dt / 2.0, 1); // 2s drift
+                const de = drift.progress * (2 - drift.progress); // ease-out
+                ws.userData.baseX = drift.fromX + (drift.toX - drift.fromX) * de;
+                ws.userData.baseY = drift.fromY + (drift.toY - drift.fromY) * de;
+                ws.userData.baseZ = drift.fromZ + (drift.toZ - drift.fromZ) * de;
+                if (drift.progress >= 1) delete ws.userData.drift;
+            }
+
             ws.position.x = ws.userData.baseX + Math.sin(t * 0.1 + phase) * 0.5;
             ws.position.y = ws.userData.baseY + Math.sin(t * 0.15 + phase * 1.3) * 0.4;
             ws.position.z = ws.userData.baseZ + Math.cos(t * 0.12 + phase * 0.7) * 0.5;
             ws.material.opacity = ws.userData.targetOpacity * fadeIn *
                 (0.8 + 0.2 * Math.sin(t * 0.5 + phase * 2));
+        }
+    }
+
+    // Animate comet trail particles
+    for (let i = cometTrails.length - 1; i >= 0; i--) {
+        const ct = cometTrails[i];
+        ct.life += dt;
+        const frac = ct.life / ct.maxLife;
+        if (frac >= 1) {
+            scene.remove(ct.sprite);
+            ct.sprite.material.map.dispose();
+            ct.sprite.material.dispose();
+            cometTrails.splice(i, 1);
+        } else {
+            // Fade out and shrink
+            ct.sprite.material.opacity = (1 - frac) * 0.8;
+            const s = ct.sprite.scale.x * (1 - dt * 0.8);
+            ct.sprite.scale.set(s, s, 1);
         }
     }
 

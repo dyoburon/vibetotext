@@ -23,12 +23,16 @@ final class AppState: ObservableObject {
     // Nebula data (recent transcription texts)
     @Published var nebulaEntriesJSON: String = "[]"
 
+    // Daily sentiment aggregates for intro graph
+    @Published var dailySentimentJSON: String = "[]"
+
     // Village persistent state
     @Published var villageState: VillageState?
     @Published var villageStateJSON: String = "{}"
 
     private let db = DatabaseManager()
     private var fileMonitor: DispatchSourceFileSystemObject?
+    private var walMonitor: DispatchSourceFileSystemObject?
     private var audioTimer: Timer?
 
     init() {
@@ -122,6 +126,24 @@ final class AppState: ObservableObject {
             let nebulaEntriesJSON = (try? JSONSerialization.data(withJSONObject: recentEntries))
                 .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
 
+            // Build daily sentiment aggregates (up to 365 days)
+            let dayFormatter = DateFormatter()
+            dayFormatter.dateFormat = "yyyy-MM-dd"
+            var dailySentiments: [String: (sum: Double, count: Int)] = [:]
+            for entry in entries {
+                guard let s = entry.sentiment else { continue }
+                let dayKey = dayFormatter.string(from: entry.timestamp)
+                let existing = dailySentiments[dayKey, default: (sum: 0, count: 0)]
+                dailySentiments[dayKey] = (sum: existing.sum + s, count: existing.count + 1)
+            }
+            let sortedDays = dailySentiments.keys.sorted().suffix(365)
+            let dailySentimentArray = sortedDays.map { dayKey -> [String: Any] in
+                let entry = dailySentiments[dayKey]!
+                return ["date": dayKey, "sentiment": entry.sum / Double(entry.count)]
+            }
+            let dailySentimentJSON = (try? JSONSerialization.data(withJSONObject: dailySentimentArray))
+                .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
+
             let elapsed = Date().timeIntervalSince(reloadStart)
             AppState.debugLog("reload() done in \(String(format: "%.2f", elapsed))s — entries=\(entries.count), uniqueWords=\(frequencies.count), totalWords=\(totalWords), wordDataJSON len=\(treeWordDataJSON.count)")
             DispatchQueue.main.async {
@@ -138,6 +160,7 @@ final class AppState: ObservableObject {
                 self.villageState = updatedVillageState
                 self.villageStateJSON = villageJSON
                 self.nebulaEntriesJSON = nebulaEntriesJSON
+                self.dailySentimentJSON = dailySentimentJSON
                 self.isLoading = false
                 AppState.debugLog("main thread updated, treeWordDataJSON len=\(treeWordDataJSON.count)")
             }
@@ -314,21 +337,47 @@ final class AppState: ObservableObject {
 
     private func watchDatabase() {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
-        let path = "\(home)/.vibetotext/history.db"
-        let fd = open(path, O_EVTONLY)
-        guard fd >= 0 else { return }
+        let basePath = "\(home)/.vibetotext/history.db"
 
-        let source = DispatchSource.makeFileSystemObjectSource(
-            fileDescriptor: fd,
-            eventMask: .write,
-            queue: .global(qos: .utility)
-        )
-        source.setEventHandler { [weak self] in
-            Thread.sleep(forTimeInterval: 0.5)
-            self?.reload()
+        // Watch the main DB file
+        let fd = open(basePath, O_EVTONLY)
+        if fd >= 0 {
+            let source = DispatchSource.makeFileSystemObjectSource(
+                fileDescriptor: fd,
+                eventMask: .write,
+                queue: .global(qos: .utility)
+            )
+            source.setEventHandler { [weak self] in
+                Thread.sleep(forTimeInterval: 0.5)
+                AppState.debugLog("DB watcher fired (main file)")
+                self?.reload()
+            }
+            source.setCancelHandler { Darwin.close(fd) }
+            source.resume()
+            fileMonitor = source
         }
-        source.setCancelHandler { Darwin.close(fd) }
-        source.resume()
-        fileMonitor = source
+
+        // Also watch the WAL file (SQLite WAL mode writes here first)
+        let walPath = basePath + "-wal"
+        // Create WAL file if it doesn't exist yet (so we can watch it)
+        if !FileManager.default.fileExists(atPath: walPath) {
+            FileManager.default.createFile(atPath: walPath, contents: nil)
+        }
+        let walFd = open(walPath, O_EVTONLY)
+        if walFd >= 0 {
+            let walSource = DispatchSource.makeFileSystemObjectSource(
+                fileDescriptor: walFd,
+                eventMask: .write,
+                queue: .global(qos: .utility)
+            )
+            walSource.setEventHandler { [weak self] in
+                Thread.sleep(forTimeInterval: 0.5)
+                AppState.debugLog("DB watcher fired (WAL file)")
+                self?.reload()
+            }
+            walSource.setCancelHandler { Darwin.close(walFd) }
+            walSource.resume()
+            walMonitor = walSource
+        }
     }
 }

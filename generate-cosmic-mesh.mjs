@@ -1,10 +1,12 @@
 import { Document, NodeIO } from '@gltf-transform/core';
 import { fal } from '@fal-ai/client';
 import fs from 'fs';
+import { config } from 'dotenv';
+config();
 
 // ── fal.ai config ──
 fal.config({
-    credentials: '90a7117c-607a-407b-9386-f5d4e67efe15:a623a83e79ee154320e4737d493aea0c',
+    credentials: process.env.FAL_KEY,
 });
 
 // ══════════════════════════════════════════

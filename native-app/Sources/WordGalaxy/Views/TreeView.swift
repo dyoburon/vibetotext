@@ -64,6 +64,7 @@ struct TreeView: NSViewRepresentable {
 
 struct TreeContainerView: View {
     @EnvironmentObject var appState: AppState
+    private let webViewStore = TreeWebViewStore.shared
 
     var body: some View {
         VStack(spacing: 0) {
@@ -116,6 +117,7 @@ struct TreeContainerView: View {
             .background(Color(white: 0.05))
 
             TreeWebView(
+                store: webViewStore,
                 health: appState.treeData.health,
                 season: appState.treeData.season,
                 streakTier: appState.treeData.streakTier,
@@ -129,6 +131,7 @@ struct TreeContainerView: View {
                 recentTrend: appState.treeData.recentTrend,
                 villageStateJSON: appState.villageStateJSON,
                 nebulaEntriesJSON: appState.nebulaEntriesJSON,
+                dailySentimentJSON: appState.dailySentimentJSON,
                 onVillagerKilled: { [weak appState] id, name, role in appState?.recordVillagerDeath(villagerId: id, name: name, role: role) }
             )
         }

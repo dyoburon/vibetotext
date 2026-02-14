@@ -9,8 +9,35 @@ let totalWordsTarget = 0;
 let counterOpacity = 0;
 let pendingVillageUpdate = null;
 
+// ── Stats overlay state ──
+let statsOpacity = 0;
+let totalVillagersTarget = 0;
+let totalBuildingsTarget = 0;
+
+// ── Sentiment graph state ──
+let sentimentData = [];
+let graphDrawProgress = 0;
+let graphOpacity = 0;
+
 const counterEl = document.getElementById('rain-counter');
 const counterNumEl = document.getElementById('counter-number');
+const statsEl = document.getElementById('intro-stats');
+const statVillagersEl = document.getElementById('stat-villagers');
+const statBuildingsEl = document.getElementById('stat-buildings');
+const graphContainer = document.getElementById('sentiment-graph-container');
+const graphCanvas = document.getElementById('sentiment-graph');
+const graphCtx = graphCanvas ? graphCanvas.getContext('2d') : null;
+
+// Retina scaling
+if (graphCanvas && graphCtx) {
+    const dpr = window.devicePixelRatio || 1;
+    const w = 600, h = 180;
+    graphCanvas.width = w * dpr;
+    graphCanvas.height = h * dpr;
+    graphCanvas.style.width = w + 'px';
+    graphCanvas.style.height = h + 'px';
+    graphCtx.scale(dpr, dpr);
+}
 
 export function getPhase() { return introPhase; }
 export function setPhase(phase) { introPhase = phase; }
@@ -25,10 +52,22 @@ export function consumePendingVillageUpdate() {
     return data;
 }
 
+export function setIntroTargets(villagers, buildings) {
+    totalVillagersTarget = villagers;
+    totalBuildingsTarget = buildings;
+}
+
+export function initSentimentGraph(data) {
+    sentimentData = data || [];
+    graphDrawProgress = 0;
+}
+
 export function startRainGrowth(words, totalWords, maxTreeY) {
     totalWordsTarget = totalWords;
     counterEl.style.display = 'block';
     counterOpacity = 0;
+    statsEl.style.display = 'block';
+    statsOpacity = 0;
     rainGrowthDuration = Math.min(25, 12 + words.length / 60);
     introPhase = 'rainGrowth';
     phaseTimer = 0;
@@ -49,6 +88,10 @@ export function skipToDone(deps) {
     deps.skyUniforms.brightness.value = 1.0;
     deps.starMat.opacity = 0.15;
     deps.fireflyMat.opacity = 0.4;
+    // Hide overlays
+    statsEl.style.display = 'none';
+    graphContainer.style.display = 'none';
+    counterEl.style.display = 'none';
 }
 
 // Returns true when phase is complete
@@ -99,6 +142,21 @@ export function updateRainGrowthPhase(dt, t, deps) {
     const countP = easeOut(progress);
     counterNumEl.textContent = Math.floor(countP * totalWordsTarget).toLocaleString();
 
+    // Stats overlay
+    statsOpacity = Math.min(statsOpacity + dt * 1.5, 1);
+    statsEl.style.opacity = statsOpacity;
+    statVillagersEl.textContent = Math.floor(countP * totalVillagersTarget);
+    statBuildingsEl.textContent = Math.floor(countP * totalBuildingsTarget);
+
+    // Sentiment graph
+    if (sentimentData.length > 0 && progress > 0.08) {
+        graphContainer.style.display = 'block';
+        graphOpacity = Math.min(graphOpacity + dt * 1.2, 1);
+        graphContainer.style.opacity = graphOpacity;
+        graphDrawProgress = Math.min((progress - 0.08) / 0.85, 1);
+        drawSentimentGraph(graphDrawProgress);
+    }
+
     if (progress >= 1) {
         introPhase = 'brighten';
         phaseTimer = 0;
@@ -120,10 +178,17 @@ export function updateBrightenPhase(dt, deps) {
     deps.rimLight.intensity = deps.TARGET_RIM * deps.RAIN_FRAC + p * deps.TARGET_RIM * (1 - deps.RAIN_FRAC);
     deps.skyUniforms.brightness.value = 0.55 + p * 0.45;
     deps.starMat.opacity = p * 0.15;
-    // Fade counter
-    counterOpacity = Math.max(0, 1 - p * 2.5);
-    counterEl.style.opacity = counterOpacity;
-    if (counterOpacity <= 0) counterEl.style.display = 'none';
+
+    // Fade all overlays
+    const fadeOut = Math.max(0, 1 - p * 2.5);
+    counterEl.style.opacity = fadeOut;
+    statsEl.style.opacity = fadeOut;
+    graphContainer.style.opacity = fadeOut;
+    if (fadeOut <= 0) {
+        counterEl.style.display = 'none';
+        statsEl.style.display = 'none';
+        graphContainer.style.display = 'none';
+    }
 
     if (phaseTimer >= BRIGHTEN_DUR) {
         introPhase = 'done';
@@ -133,4 +198,109 @@ export function updateBrightenPhase(dt, deps) {
         return true;
     }
     return false;
+}
+
+// ── Sentiment Graph Rendering ──
+
+function drawSentimentGraph(progress) {
+    if (!graphCtx || sentimentData.length === 0) return;
+
+    const W = 600, H = 180;
+    const pad = { top: 20, bottom: 25, left: 30, right: 15 };
+    const plotW = W - pad.left - pad.right;
+    const plotH = H - pad.top - pad.bottom;
+    const midY = pad.top + plotH / 2;
+
+    graphCtx.clearRect(0, 0, W, H);
+
+    const n = sentimentData.length;
+    const pointsToDraw = Math.max(1, Math.floor(n * progress));
+
+    // Zero line (neutral)
+    graphCtx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+    graphCtx.lineWidth = 1;
+    graphCtx.setLineDash([4, 4]);
+    graphCtx.beginPath();
+    const zeroDrawWidth = plotW * progress;
+    graphCtx.moveTo(pad.left, midY);
+    graphCtx.lineTo(pad.left + zeroDrawWidth, midY);
+    graphCtx.stroke();
+    graphCtx.setLineDash([]);
+
+    // Build path
+    const points = [];
+    for (let i = 0; i < pointsToDraw; i++) {
+        const x = pad.left + (i / Math.max(n - 1, 1)) * plotW;
+        const s = Math.max(-1, Math.min(1, sentimentData[i].sentiment));
+        const y = midY - (s * plotH / 2);
+        points.push({ x, y, s });
+    }
+
+    if (points.length < 1) return;
+
+    // Gradient stroke: green (positive) → gray (neutral) → red (negative)
+    const grad = graphCtx.createLinearGradient(0, pad.top, 0, pad.top + plotH);
+    grad.addColorStop(0, '#44cc44');
+    grad.addColorStop(0.35, '#66cc44');
+    grad.addColorStop(0.5, '#888888');
+    grad.addColorStop(0.65, '#cc6644');
+    grad.addColorStop(1, '#cc4444');
+
+    // Draw line
+    graphCtx.beginPath();
+    graphCtx.lineWidth = 2;
+    graphCtx.lineCap = 'round';
+    graphCtx.lineJoin = 'round';
+    for (let i = 0; i < points.length; i++) {
+        if (i === 0) graphCtx.moveTo(points[i].x, points[i].y);
+        else graphCtx.lineTo(points[i].x, points[i].y);
+    }
+    graphCtx.strokeStyle = grad;
+    graphCtx.stroke();
+
+    // Subtle fill under line
+    if (points.length > 1) {
+        graphCtx.beginPath();
+        for (let i = 0; i < points.length; i++) {
+            if (i === 0) graphCtx.moveTo(points[i].x, points[i].y);
+            else graphCtx.lineTo(points[i].x, points[i].y);
+        }
+        graphCtx.lineTo(points[points.length - 1].x, midY);
+        graphCtx.lineTo(points[0].x, midY);
+        graphCtx.closePath();
+        const fillGrad = graphCtx.createLinearGradient(0, pad.top, 0, pad.top + plotH);
+        fillGrad.addColorStop(0, 'rgba(68, 204, 68, 0.08)');
+        fillGrad.addColorStop(0.5, 'rgba(136, 136, 136, 0.02)');
+        fillGrad.addColorStop(1, 'rgba(204, 68, 68, 0.08)');
+        graphCtx.fillStyle = fillGrad;
+        graphCtx.fill();
+    }
+
+    // Leading dot (glowing pen tip)
+    if (progress < 1) {
+        const last = points[points.length - 1];
+        const dotColor = last.s > 0.15 ? '#44cc44' : last.s < -0.15 ? '#cc4444' : '#888888';
+
+        graphCtx.beginPath();
+        graphCtx.arc(last.x, last.y, 3, 0, Math.PI * 2);
+        graphCtx.fillStyle = dotColor;
+        graphCtx.fill();
+
+        // Glow
+        graphCtx.beginPath();
+        graphCtx.arc(last.x, last.y, 8, 0, Math.PI * 2);
+        const glowGrad = graphCtx.createRadialGradient(last.x, last.y, 2, last.x, last.y, 8);
+        glowGrad.addColorStop(0, dotColor + '66');
+        glowGrad.addColorStop(1, 'rgba(0,0,0,0)');
+        graphCtx.fillStyle = glowGrad;
+        graphCtx.fill();
+    }
+
+    // Axis labels
+    graphCtx.font = '10px "SF Mono", Menlo, monospace';
+    graphCtx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+    graphCtx.textAlign = 'right';
+    graphCtx.fillText('+1', pad.left - 4, pad.top + 10);
+    graphCtx.fillText(' 0', pad.left - 4, midY + 4);
+    graphCtx.fillText('-1', pad.left - 4, pad.top + plotH - 2);
 }

@@ -3,8 +3,8 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { mulberry32, PLANET_RADIUS } from './utils.js';
 import { createTreeMaterials, generateTree, getTreeState, getTreeMaterials } from './tree.js';
 import { assignWordsToLeaves, createTreeWordSprites, getLeafWordSprites, startRainSprites, getRainSprites, cleanupRainSprites, initRaycasting, hidePopup } from './words.js';
-import { getPhase, startRainGrowth, skipToDone, updateRainGrowthPhase, updateBrightenPhase, consumePendingVillageUpdate, setPendingVillageUpdate, getIntroProgress } from './intro.js';
-import { initVillage, updateVillageMood as applyVillageMood, animateVillage, isInitialized as isVillageInitialized, getVillageMood, setVillageGrowthProgress, setVillageTimeScale, updateVillageState as applyVillageState } from './village.js';
+import { getPhase, startRainGrowth, skipToDone, updateRainGrowthPhase, updateBrightenPhase, consumePendingVillageUpdate, setPendingVillageUpdate, getIntroProgress, setIntroTargets, initSentimentGraph } from './intro.js';
+import { initVillage, updateVillageMood as applyVillageMood, animateVillage, isInitialized as isVillageInitialized, getVillageMood, setVillageGrowthProgress, setVillageTimeScale, updateVillageState as applyVillageState, getVillageCounts } from './village.js';
 import { animateSkyEntity } from './sky-entity.js';
 import { initAttackController, updateAttackController, setAttackMood, skipAttackCinematic, isAttackActive } from './attack-controller.js';
 import { loadModel, normalizeModel, centerModel, preloadAllModels } from './model-loader.js';
@@ -247,7 +247,10 @@ window.initTreeWords = function(wordData, uniqueWords, totalWords, strata) {
     // Create village objects (hidden) for time-lapse growth during intro
     if (!isVillageInitialized()) {
         const isIntro = getPhase() === 'waiting';
-        initVillage(scene, totalWords, isIntro);
+        initVillage(scene, totalWords, isIntro).then(() => {
+            const counts = getVillageCounts();
+            setIntroTargets(counts.villagers, counts.buildings);
+        });
         if (isIntro) {
             setVillageTimeScale(8);
         }
@@ -286,6 +289,10 @@ window.updateVillageState = function(jsonStr) {
 };
 
 window.hidePopup = hidePopup;
+
+window.initIntroStats = function(dailySentiment) {
+    initSentimentGraph(dailySentiment || []);
+};
 
 window.initNebula = function(entries) {
     if (!isNebulaInitialized() && entries && entries.length > 0) {

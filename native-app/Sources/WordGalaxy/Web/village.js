@@ -53,6 +53,7 @@ async function _doPreloadModels() {
 
 export function isInitialized() { return villageInitialized; }
 export function getVillageMood() { return villageMood; }
+export function getVillageCounts() { return { buildings: villageBuildings.length, villagers: villageVillagers.length }; }
 export function setVillageTimeScale(s) { villageTimeScale = s; }
 
 // ── Convert flat radius to polar angle ──

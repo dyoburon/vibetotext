@@ -557,39 +557,45 @@ export async function initVillage(scene, totalWords, startHidden) {
                     return smoothstep(0.1, 0.0, minD);
                 }
 
+                // Single wave function: center Y, wobble speed, width, brightness
+                float waveLine(float y, float cx, float cz, float center, float wobbleSpd, float width) {
+                    float shape = sin(cx * 0.2 + wobbleSpd * 1.0) * 3.0
+                               + sin(cz * 0.3 + wobbleSpd * 0.7) * 2.0;
+                    return smoothstep(width, 0.0, abs(y - center - shape));
+                }
+
                 void main() {
                     float s = starLayer(vWorldPos, 0.3);
 
-                    // Oscillating energy wave — sine wave mapped to Y position on body
-                    // Creates a line that sweeps up/down with waveform wobble
-                    float waveCenter = sin(uTime * 0.5) * 40.0;
-                    float waveShape = sin(vWorldPos.x * 0.2 + uTime * 2.0) * 3.0
-                                    + sin(vWorldPos.z * 0.3 + uTime * 1.5) * 2.0;
-                    float waveDist = abs(vWorldPos.y - waveCenter - waveShape);
-                    float wave1 = smoothstep(2.5, 0.0, waveDist);
+                    // Group center — oscillates a bit higher up the torso
+                    float groupCenter = sin(uTime * 0.4) * 40.0 + 5.0;
 
-                    // Second wave splits off
-                    float wave2center = waveCenter + 8.0 + sin(uTime * 0.7) * 5.0;
-                    float wave2shape = sin(vWorldPos.x * 0.25 + uTime * 2.5) * 2.0;
-                    float wave2 = smoothstep(1.5, 0.0, abs(vWorldPos.y - wave2center - wave2shape)) * 0.6;
+                    float y = vWorldPos.y;
+                    float cx = vWorldPos.x;
+                    float cz = vWorldPos.z;
 
-                    // Third wave splits the other way
-                    float wave3center = waveCenter - 8.0 - sin(uTime * 0.6) * 5.0;
-                    float wave3shape = sin(vWorldPos.z * 0.2 + uTime * 1.8) * 2.0;
-                    float wave3 = smoothstep(1.5, 0.0, abs(vWorldPos.y - wave3center - wave3shape)) * 0.6;
+                    // 5 stacked lines moving as one group
+                    float waves = 0.0;
+                    vec3 waveColor = vec3(0.0);
+                    vec3 blueCol = vec3(0.3, 0.7, 1.0);
+                    vec3 purpleCol = vec3(0.5, 0.3, 0.95);
 
-                    // Blue palette
-                    vec3 starCol = vec3(0.4, 0.6, 1.0);
-                    vec3 waveCol = vec3(0.3, 0.7, 1.0);
-                    vec3 wave2Col = vec3(0.5, 0.4, 1.0);
-                    vec3 wave3Col = vec3(0.2, 0.5, 0.9);
+                    float w1 = waveLine(y, cx, cz, groupCenter - 8.0, uTime * 2.0, 1.2) * 0.4;
+                    float w2 = waveLine(y, cx, cz, groupCenter - 3.0, uTime * 2.2, 1.8) * 0.75;
+                    float w3 = waveLine(y, cx, cz, groupCenter + 2.0, uTime * 1.9, 2.0) * 0.85;
+                    float w4 = waveLine(y, cx, cz, groupCenter + 7.0, uTime * 2.3, 1.8) * 0.75;
+                    float w5 = waveLine(y, cx, cz, groupCenter + 12.0, uTime * 1.8, 1.2) * 0.4;
+                    waves = w1 + w2 + w3 + w4 + w5;
 
-                    vec3 color = starCol * s;
-                    color += waveCol * wave1;
-                    color += wave2Col * wave2;
-                    color += wave3Col * wave3;
+                    // Outer lines purple, inner lines blue
+                    waveColor += purpleCol * w1;
+                    waveColor += blueCol * w2;
+                    waveColor += blueCol * w3;
+                    waveColor += blueCol * w4;
+                    waveColor += purpleCol * w5;
 
-                    float alpha = s * 0.9 + wave1 * 0.7 + wave2 * 0.5 + wave3 * 0.5;
+                    vec3 color = vec3(0.6, 0.85, 1.0) * s * 1.5 + waveColor;
+                    float alpha = s * 1.4 + waves * 0.7;
                     alpha = clamp(alpha, 0.0, 1.0);
 
                     gl_FragColor = vec4(color, alpha);

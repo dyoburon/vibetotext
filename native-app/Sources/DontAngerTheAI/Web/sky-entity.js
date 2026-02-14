@@ -41,7 +41,7 @@ float noise(vec2 p) {
 }
 
 void main() {
-    vec2 p = (vUv - 0.5) * 2.0;
+    vec2 p = (vUv - 0.5) * 3.5;  // wider space for corona dispersion
 
     // Slow rotation for the accretion ring
     float rotAngle = uTime * 0.08;
@@ -119,13 +119,19 @@ void main() {
     vec3 innerGlow = baseColor * 0.12 * innerEdge;
     innerGlow = innerGlow / (1.0 + abs(innerGlow));
 
-    // Composite: ring + face in center + inner glow
-    vec3 color = ring + face.rgb * face.a * faceMask + innerGlow;
+    // Soft outer corona glow that disperses gradually
+    float coronaDist = max(0.0, rawDist - pulse);
+    float corona = exp(-coronaDist * 3.0) * 0.24;
+    vec3 coronaGlow = baseColor * corona;
+    coronaGlow = coronaGlow / (1.0 + abs(coronaGlow));
 
-    // Outer fade to transparent at edges
-    float outerFade = smoothstep(1.0, 0.65, rawDist);
+    // Composite: ring + face in center + inner glow + corona
+    vec3 color = ring + face.rgb * face.a * faceMask + innerGlow + coronaGlow;
+
+    // Push outer fade much further out for gradual dispersion
+    float outerFade = smoothstep(1.8, 0.5, rawDist);
     float alpha = clamp(
-        (length(ring) * 1.5 + face.a * faceMask * 0.8 + innerEdge * 0.3) * outerFade,
+        (length(ring) * 1.5 + face.a * faceMask * 0.8 + innerEdge * 0.3 + corona * 2.0) * outerFade,
         0.0, 1.0
     );
 
@@ -160,7 +166,7 @@ export function createSkyEntity(scene) {
 
     const geo = new THREE.PlaneGeometry(1, 1);
     const mesh = new THREE.Mesh(geo, mat);
-    mesh.scale.set(80, 80, 1);
+    mesh.scale.set(140, 140, 1);
     mesh.position.set(0, 70, -60);
     mesh.renderOrder = 1;
     scene.add(mesh);

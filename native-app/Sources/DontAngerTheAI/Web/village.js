@@ -510,7 +510,8 @@ export async function initVillage(scene, totalWords, startHidden) {
 
             // Position: move down and back so the face hole aligns with the black hole ring
             // Black hole is at (0, 70, -60)
-            model.position.set(0, 0, -40);
+            model.position.set(0, 0, -65);
+            model.rotation.y = 0.5;
 
             // Cosmic starfield shader
             const cosmicVert = /* glsl */`

@@ -34,5 +34,15 @@ launcher.c
 .env
 .fastembed_cache/
 
+# .NET / C#
+bin/
+obj/
+*.user
+*.suo
+*.cache
+*.dll
+*.exe
+!*.exe.config
+
 # Electron history app
 history-app/node_modules/

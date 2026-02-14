@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- <ApplicationIcon>vibetotext.ico</ApplicationIcon> -->
+    <AssemblyName>VibeToText</AssemblyName>
+    <RootNamespace>VibeToText</RootNamespace>
+    <Version>1.0.0</Version>
+    <Description>Voice-to-text with automatic code context injection</Description>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Audio -->
+    <PackageReference Include="NAudio" Version="2.2.1" />
+
+    <!-- Whisper Speech Recognition (CPU) -->
+    <PackageReference Include="Whisper.net" Version="1.9.0" />
+    <PackageReference Include="Whisper.net.Runtime" Version="1.9.0" />
+
+    <!-- Database -->
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.2" />
+
+    <!-- Charts -->
+    <PackageReference Include="LiveChartsCore.SkiaSharpView.WPF" Version="2.0.0-rc3.3" />
+
+    <!-- System Tray -->
+    <PackageReference Include="H.NotifyIcon.Wpf" Version="2.3.0" />
+
+    <!-- System.Drawing for tray icon -->
+    <PackageReference Include="System.Drawing.Common" Version="9.0.3" />
+
+    <!-- MVVM -->
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+  </ItemGroup>
+
+</Project>

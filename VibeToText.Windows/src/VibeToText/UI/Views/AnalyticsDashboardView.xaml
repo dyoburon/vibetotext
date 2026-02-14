@@ -1,0 +1,181 @@
+<UserControl x:Class="VibeToText.UI.Views.AnalyticsDashboardView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:lvc="clr-namespace:LiveChartsCore.SkiaSharpView.WPF;assembly=LiveChartsCore.SkiaSharpView.WPF"
+             xmlns:controls="clr-namespace:VibeToText.UI.Controls">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="12">
+        <StackPanel x:Name="AnalyticsPanel">
+            <!-- Empty state -->
+            <TextBlock Text="No transcriptions yet"
+                       Foreground="{StaticResource TextMutedBrush}" FontSize="14"
+                       HorizontalAlignment="Center" Margin="0,40,0,0"
+                       Visibility="{Binding HasEntries, Converter={StaticResource InverseBoolToVisibility}}" />
+
+            <!-- Analytics Grid -->
+            <UniformGrid Columns="2" x:Name="ChartGrid"
+                         Visibility="{Binding HasEntries, Converter={StaticResource BoolToVisibility}}">
+
+                <!-- Streaks -->
+                <Border Style="{StaticResource CardStyle}" Margin="0,0,5,10">
+                    <StackPanel>
+                        <TextBlock Text="STREAKS" Style="{StaticResource SectionHeaderStyle}" Margin="0,0,0,8" />
+                        <UniformGrid Columns="2">
+                            <StackPanel HorizontalAlignment="Center">
+                                <TextBlock Text="{Binding AnalyticsData.CurrentStreak}"
+                                           FontSize="24" FontWeight="Bold"
+                                           Foreground="{StaticResource AccentBrush}"
+                                           HorizontalAlignment="Center" />
+                                <TextBlock Text="CURRENT" FontSize="9" Foreground="{StaticResource TextMutedBrush}"
+                                           HorizontalAlignment="Center" />
+                            </StackPanel>
+                            <StackPanel HorizontalAlignment="Center">
+                                <TextBlock Text="{Binding AnalyticsData.LongestStreak}"
+                                           FontSize="24" FontWeight="Bold"
+                                           Foreground="{StaticResource TextPrimaryBrush}"
+                                           HorizontalAlignment="Center" />
+                                <TextBlock Text="LONGEST" FontSize="9" Foreground="{StaticResource TextMutedBrush}"
+                                           HorizontalAlignment="Center" />
+                            </StackPanel>
+                        </UniformGrid>
+                    </StackPanel>
+                </Border>
+
+                <!-- Personal Records -->
+                <Border Style="{StaticResource CardStyle}" Margin="5,0,0,10">
+                    <StackPanel>
+                        <TextBlock Text="PERSONAL RECORDS" Style="{StaticResource SectionHeaderStyle}" Margin="0,0,0,8" />
+                        <UniformGrid Columns="3">
+                            <StackPanel HorizontalAlignment="Center">
+                                <TextBlock Text="{Binding AnalyticsData.MaxWpm}"
+                                           FontSize="16" FontWeight="Bold"
+                                           Foreground="{StaticResource TextPrimaryBrush}"
+                                           HorizontalAlignment="Center" />
+                                <TextBlock Text="BEST WPM" FontSize="8" Foreground="{StaticResource TextMutedBrush}"
+                                           HorizontalAlignment="Center" />
+                            </StackPanel>
+                            <StackPanel HorizontalAlignment="Center">
+                                <TextBlock Text="{Binding AnalyticsData.MaxWordsInDay}"
+                                           FontSize="16" FontWeight="Bold"
+                                           Foreground="{StaticResource TextPrimaryBrush}"
+                                           HorizontalAlignment="Center" />
+                                <TextBlock Text="WORDS/DAY" FontSize="8" Foreground="{StaticResource TextMutedBrush}"
+                                           HorizontalAlignment="Center" />
+                            </StackPanel>
+                            <StackPanel HorizontalAlignment="Center">
+                                <TextBlock Text="{Binding AnalyticsData.LongestSession, StringFormat='{}{0:F0}s'}"
+                                           FontSize="16" FontWeight="Bold"
+                                           Foreground="{StaticResource TextPrimaryBrush}"
+                                           HorizontalAlignment="Center" />
+                                <TextBlock Text="LONGEST" FontSize="8" Foreground="{StaticResource TextMutedBrush}"
+                                           HorizontalAlignment="Center" />
+                            </StackPanel>
+                        </UniformGrid>
+                    </StackPanel>
+                </Border>
+
+                <!-- Daily Goal Progress -->
+                <Border Style="{StaticResource CardStyle}" Margin="0,0,5,10">
+                    <controls:GoalProgressCard DataContext="{Binding AnalyticsData}" />
+                </Border>
+
+                <!-- Sessions Today -->
+                <Border Style="{StaticResource CardStyle}" Margin="5,0,0,10">
+                    <controls:SessionsGaugeCard DataContext="{Binding AnalyticsData}" />
+                </Border>
+
+                <!-- Activity Heatmap (full width) -->
+                <Border Style="{StaticResource CardStyle}" Margin="0,0,0,10"
+                        Grid.ColumnSpan="2">
+                    <StackPanel>
+                        <TextBlock Text="ACTIVITY" Style="{StaticResource SectionHeaderStyle}" Margin="0,0,0,8" />
+                        <controls:ActivityHeatmapControl DataContext="{Binding AnalyticsData}" />
+                    </StackPanel>
+                </Border>
+
+                <!-- Charts using LiveCharts2 -->
+                <Border Style="{StaticResource CardStyle}" Margin="0,0,5,10">
+                    <controls:WordsChartCard DataContext="{Binding AnalyticsData}" />
+                </Border>
+
+                <Border Style="{StaticResource CardStyle}" Margin="5,0,0,10">
+                    <controls:TimeSavedChartCard DataContext="{Binding AnalyticsData}" />
+                </Border>
+
+                <Border Style="{StaticResource CardStyle}" Margin="0,0,5,10">
+                    <controls:WpmChartCard DataContext="{Binding AnalyticsData}" />
+                </Border>
+
+                <Border Style="{StaticResource CardStyle}" Margin="5,0,0,10">
+                    <controls:ModeDonutCard DataContext="{Binding AnalyticsData}" />
+                </Border>
+
+                <!-- Period Comparison (full width) -->
+                <Border Style="{StaticResource CardStyle}" Margin="0,0,0,10"
+                        Grid.ColumnSpan="2">
+                    <controls:PeriodComparisonCard DataContext="{Binding AnalyticsData}" />
+                </Border>
+
+                <!-- Filler Words -->
+                <Border Style="{StaticResource CardStyle}" Margin="0,0,5,10">
+                    <controls:FillerWordsCard DataContext="{Binding AnalyticsData}" />
+                </Border>
+
+                <!-- Common Phrases -->
+                <Border Style="{StaticResource CardStyle}" Margin="5,0,0,10">
+                    <controls:CommonPhrasesCard DataContext="{Binding AnalyticsData}" />
+                </Border>
+
+                <!-- New Words This Week -->
+                <Border Style="{StaticResource CardStyle}" Margin="0,0,5,10">
+                    <controls:NewWordsCard DataContext="{Binding AnalyticsData}" />
+                </Border>
+
+                <!-- Reading Level -->
+                <Border Style="{StaticResource CardStyle}" Margin="5,0,0,10">
+                    <controls:ReadingLevelCard DataContext="{Binding AnalyticsData}" />
+                </Border>
+
+                <!-- Vocabulary Growth -->
+                <Border Style="{StaticResource CardStyle}" Margin="0,0,5,10">
+                    <controls:VocabGrowthCard DataContext="{Binding AnalyticsData}" />
+                </Border>
+
+                <!-- Word Length -->
+                <Border Style="{StaticResource CardStyle}" Margin="5,0,0,10">
+                    <controls:WordLengthCard DataContext="{Binding AnalyticsData}" />
+                </Border>
+
+                <!-- Rare Words (full width) -->
+                <Border Style="{StaticResource CardStyle}" Margin="0,0,0,10"
+                        Grid.ColumnSpan="2">
+                    <controls:RareWordsCard DataContext="{Binding AnalyticsData}" />
+                </Border>
+
+                <!-- WPM by Hour (full width) -->
+                <Border Style="{StaticResource CardStyle}" Margin="0,0,0,10"
+                        Grid.ColumnSpan="2">
+                    <controls:WpmByHourCard DataContext="{Binding AnalyticsData}" />
+                </Border>
+
+                <!-- Session Histogram (full width) -->
+                <Border Style="{StaticResource CardStyle}" Margin="0,0,0,10"
+                        Grid.ColumnSpan="2">
+                    <controls:SessionHistogramCard DataContext="{Binding AnalyticsData}" />
+                </Border>
+
+                <!-- Word Cloud (full width) -->
+                <Border Style="{StaticResource CardStyle}" Margin="0,0,0,10"
+                        Grid.ColumnSpan="2">
+                    <controls:WordCloudControl DataContext="{Binding AnalyticsData}" />
+                </Border>
+
+                <!-- Sentiment (full width) -->
+                <Border Style="{StaticResource CardStyle}" Margin="0,0,0,10"
+                        Grid.ColumnSpan="2">
+                    <controls:SentimentChartCard DataContext="{Binding AnalyticsData}" />
+                </Border>
+            </UniformGrid>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

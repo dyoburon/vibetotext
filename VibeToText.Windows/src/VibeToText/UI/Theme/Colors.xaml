@@ -1,0 +1,55 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Primary backgrounds -->
+    <Color x:Key="BgPrimaryColor">#FF0D0D0F</Color>
+    <Color x:Key="BgSecondaryColor">#FF151518</Color>
+    <Color x:Key="BgTertiaryColor">#FF1C1C21</Color>
+    <Color x:Key="BgHoverColor">#FF232329</Color>
+    <Color x:Key="BorderColor">#FF2A2A32</Color>
+
+    <!-- Text -->
+    <Color x:Key="TextPrimaryColor">#FFF5F5F7</Color>
+    <Color x:Key="TextSecondaryColor">#FFA1A1A6</Color>
+    <Color x:Key="TextMutedColor">#FF6E6E73</Color>
+
+    <!-- Accent -->
+    <Color x:Key="AccentColor">#FFFBBF24</Color>
+    <Color x:Key="AccentSoftColor">#26636BF1</Color>
+
+    <!-- Mode colors -->
+    <Color x:Key="GreenColor">#FF34D399</Color>
+    <Color x:Key="GreenSoftColor">#2634D399</Color>
+    <Color x:Key="PurpleColor">#FFA78BFA</Color>
+    <Color x:Key="PurpleSoftColor">#26A78BFA</Color>
+    <Color x:Key="OrangeColor">#FFFB923C</Color>
+    <Color x:Key="OrangeSoftColor">#26FB923C</Color>
+    <Color x:Key="BlueColor">#FF60A5FA</Color>
+    <Color x:Key="BlueSoftColor">#2660A5FA</Color>
+    <Color x:Key="PinkColor">#FFEC4899</Color>
+    <Color x:Key="CyanColor">#FF22D3EE</Color>
+
+    <!-- Brushes -->
+    <SolidColorBrush x:Key="BgPrimaryBrush" Color="{StaticResource BgPrimaryColor}" />
+    <SolidColorBrush x:Key="BgSecondaryBrush" Color="{StaticResource BgSecondaryColor}" />
+    <SolidColorBrush x:Key="BgTertiaryBrush" Color="{StaticResource BgTertiaryColor}" />
+    <SolidColorBrush x:Key="BgHoverBrush" Color="{StaticResource BgHoverColor}" />
+    <SolidColorBrush x:Key="BorderBrush" Color="{StaticResource BorderColor}" />
+
+    <SolidColorBrush x:Key="TextPrimaryBrush" Color="{StaticResource TextPrimaryColor}" />
+    <SolidColorBrush x:Key="TextSecondaryBrush" Color="{StaticResource TextSecondaryColor}" />
+    <SolidColorBrush x:Key="TextMutedBrush" Color="{StaticResource TextMutedColor}" />
+
+    <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource AccentColor}" />
+    <SolidColorBrush x:Key="GreenBrush" Color="{StaticResource GreenColor}" />
+    <SolidColorBrush x:Key="GreenSoftBrush" Color="{StaticResource GreenSoftColor}" />
+    <SolidColorBrush x:Key="PurpleBrush" Color="{StaticResource PurpleColor}" />
+    <SolidColorBrush x:Key="PurpleSoftBrush" Color="{StaticResource PurpleSoftColor}" />
+    <SolidColorBrush x:Key="OrangeBrush" Color="{StaticResource OrangeColor}" />
+    <SolidColorBrush x:Key="OrangeSoftBrush" Color="{StaticResource OrangeSoftColor}" />
+    <SolidColorBrush x:Key="BlueBrush" Color="{StaticResource BlueColor}" />
+    <SolidColorBrush x:Key="BlueSoftBrush" Color="{StaticResource BlueSoftColor}" />
+    <SolidColorBrush x:Key="PinkBrush" Color="{StaticResource PinkColor}" />
+    <SolidColorBrush x:Key="CyanBrush" Color="{StaticResource CyanColor}" />
+
+</ResourceDictionary>

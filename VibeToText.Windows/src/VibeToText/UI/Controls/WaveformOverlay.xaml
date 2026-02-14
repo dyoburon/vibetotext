@@ -1,0 +1,17 @@
+<Window x:Class="VibeToText.UI.Controls.WaveformOverlay"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Topmost="True"
+        ShowInTaskbar="False"
+        Background="Transparent"
+        Width="420" Height="60"
+        ResizeMode="NoResize">
+
+    <Border x:Name="RootBorder" CornerRadius="8"
+            Background="#E61A1A1A">
+        <Canvas x:Name="WaveformCanvas"
+                ClipToBounds="True" />
+    </Border>
+</Window>

@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "@fal-ai/client": "^1.9.1",
+    "@gltf-transform/core": "^4.3.0"
+  }
+}

@@ -8,7 +8,8 @@ import { initVillage, updateVillageMood as applyVillageMood, animateVillage, isI
 import { animateSkyEntity } from './sky-entity.js';
 import { initAttackController, updateAttackController, setAttackMood, skipAttackCinematic, isAttackActive } from './attack-controller.js';
 import { loadModel, normalizeModel, centerModel, preloadAllModels } from './model-loader.js';
-import { createNebula, animateNebula, isNebulaInitialized } from './nebula.js';
+import { createNebula, animateNebula, isNebulaInitialized, updateEntries as updateNebulaEntries } from './nebula.js';
+import { updateWordPulses } from './words.js';
 import { preloadVillageModels } from './village.js';
 
 // ══════════════════════════════════════════
@@ -16,9 +17,9 @@ import { preloadVillageModels } from './village.js';
 // ══════════════════════════════════════════
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.FogExp2(0x88aabb, 0.004);
+scene.fog = new THREE.FogExp2(0x88aabb, 0.002);
 
-const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 500);
+const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 2000);
 camera.position.set(20, 14, 28);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -36,9 +37,22 @@ controls.dampingFactor = 0.05;
 controls.autoRotate = true;
 controls.autoRotateSpeed = 0.25;
 controls.target.set(0, PLANET_RADIUS * 0.3, 0);
-controls.minDistance = 0;
-controls.maxDistance = 160;
+controls.minDistance = 3;
+controls.maxDistance = Infinity;
 controls.maxPolarAngle = Math.PI;
+controls.zoomSpeed = 1.2;
+
+// Log zoom behavior
+let wheelCount = 0;
+let lastDistLog = 0;
+renderer.domElement.addEventListener('wheel', function(e) {
+    wheelCount++;
+    const dist = camera.position.distanceTo(controls.target);
+    // Log distance every 20 events to track if zoom is actually changing
+    if (wheelCount <= 5 || wheelCount % 20 === 0) {
+        console.log('[wheel] #' + wheelCount + ' dY=' + e.deltaY.toFixed(1) + ' dist=' + dist.toFixed(1) + ' trusted=' + e.isTrusted);
+    }
+});
 
 // ── Sky ──
 const skyGeo = new THREE.SphereGeometry(150, 32, 16);
@@ -279,6 +293,12 @@ window.initNebula = function(entries) {
     }
 };
 
+window.updateNebula = function(entries) {
+    if (isNebulaInitialized() && entries && entries.length > 0) {
+        updateNebulaEntries(entries);
+    }
+};
+
 // Fallback: if no data arrives in 8 seconds, generate a default tree
 setTimeout(() => {
     if (getPhase() === 'waiting') {
@@ -376,6 +396,7 @@ function animate() {
     if (isNebulaInitialized()) {
         animateNebula(dt, t, camera.position);
     }
+    updateWordPulses();
 
     renderer.render(scene, camera);
 }

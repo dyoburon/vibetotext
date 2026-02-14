@@ -153,6 +153,59 @@ export function startRainSprites(scene, words, maxTreeY, rng) {
     }
 }
 
+// ── Word position lookup for nebula migration ──
+export function getWordWorldPosition(word) {
+    for (const sprite of leafWordSprites) {
+        if (sprite.userData.wd && sprite.userData.wd.word === word && sprite.parent) {
+            const pos = new THREE.Vector3();
+            sprite.getWorldPosition(pos);
+            return pos;
+        }
+    }
+    return null;
+}
+
+// Return a random leaf word sprite's world position (for unmatched words)
+export function getRandomTreePosition() {
+    if (leafWordSprites.length === 0) return null;
+    const sprite = leafWordSprites[Math.floor(Math.random() * leafWordSprites.length)];
+    if (!sprite.parent) return null;
+    const pos = new THREE.Vector3();
+    sprite.getWorldPosition(pos);
+    return pos;
+}
+
+export function pulseTreeWord(word) {
+    for (const sprite of leafWordSprites) {
+        if (sprite.userData.wd && sprite.userData.wd.word === word) {
+            sprite.visible = true;
+            // Scale pulse: grow then shrink back
+            const orig = sprite.scale.clone();
+            sprite.scale.multiplyScalar(2.0);
+            sprite.userData.pulseStart = performance.now();
+            sprite.userData.pulseOrigScale = orig;
+        }
+    }
+}
+
+export function updateWordPulses() {
+    const now = performance.now();
+    for (const sprite of leafWordSprites) {
+        if (sprite.userData.pulseStart) {
+            const elapsed = (now - sprite.userData.pulseStart) / 1000;
+            if (elapsed > 0.5) {
+                sprite.scale.copy(sprite.userData.pulseOrigScale);
+                delete sprite.userData.pulseStart;
+                delete sprite.userData.pulseOrigScale;
+            } else {
+                const t = elapsed / 0.5;
+                const s = 1 + (1 - t) * 1.0; // 2x → 1x over 0.5s
+                sprite.scale.copy(sprite.userData.pulseOrigScale).multiplyScalar(s);
+            }
+        }
+    }
+}
+
 export function cleanupRainSprites(scene) {
     for (const s of rainSprites) { scene.remove(s); s.material.map.dispose(); s.material.dispose(); }
     rainSprites.length = 0;

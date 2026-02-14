@@ -115,9 +115,9 @@ final class AppState: ObservableObject {
             let treeStrataJSON = (try? JSONSerialization.data(withJSONObject: strataArray))
                 .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
 
-            // Build nebula entries JSON (most recent 100 transcription texts)
+            // Build nebula entries JSON (most recent 100 transcription texts with timestamps)
             let recentEntries = entries.prefix(100).map { entry -> [String: Any] in
-                ["text": entry.text, "mode": entry.mode]
+                ["text": entry.text, "mode": entry.mode, "timestamp": entry.timestamp.timeIntervalSince1970]
             }
             let nebulaEntriesJSON = (try? JSONSerialization.data(withJSONObject: recentEntries))
                 .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"

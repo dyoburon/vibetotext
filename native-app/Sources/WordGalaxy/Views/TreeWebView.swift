@@ -1,6 +1,18 @@
 import SwiftUI
 import WebKit
 
+private let debugLogPath = "/tmp/wg_scroll.log"
+private func scrollLog(_ msg: String) {
+    let line = "\(Date()): \(msg)\n"
+    if let fh = FileHandle(forWritingAtPath: debugLogPath) {
+        fh.seekToEndOfFile()
+        fh.write(line.data(using: .utf8)!)
+        fh.closeFile()
+    } else {
+        FileManager.default.createFile(atPath: debugLogPath, contents: line.data(using: .utf8))
+    }
+}
+
 struct TreeWebView: NSViewRepresentable {
     let health: Float
     let season: Float
@@ -23,11 +35,33 @@ struct TreeWebView: NSViewRepresentable {
         config.userContentController.add(context.coordinator, name: "treeReady")
         config.userContentController.add(context.coordinator, name: "requestVillageUpdate")
         config.userContentController.add(context.coordinator, name: "villagerKilled")
+        config.userContentController.add(context.coordinator, name: "jsLog")
+
+        // Capture JS console.log and console.error → forward to Swift
+        let consoleScript = WKUserScript(source: """
+            (function(){
+                var origLog = console.log, origErr = console.error;
+                console.log = function() {
+                    origLog.apply(console, arguments);
+                    window.webkit.messageHandlers.jsLog.postMessage('[LOG] ' + Array.from(arguments).join(' '));
+                };
+                console.error = function() {
+                    origErr.apply(console, arguments);
+                    window.webkit.messageHandlers.jsLog.postMessage('[ERR] ' + Array.from(arguments).join(' '));
+                };
+                window.onerror = function(msg, url, line) {
+                    window.webkit.messageHandlers.jsLog.postMessage('[ERR] ' + msg + ' at ' + url + ':' + line);
+                };
+            })();
+        """, injectionTime: .atDocumentStart, forMainFrameOnly: true)
+        config.userContentController.addUserScript(consoleScript)
 
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.setValue(false, forKey: "drawsBackground")
+        webView.allowsMagnification = false
         webView.loadFileURL(treeSceneFileURL, allowingReadAccessTo: treeSceneFileURL.deletingLastPathComponent())
         context.coordinator.webView = webView
+        context.coordinator.installScrollMonitor(for: webView)
         return webView
     }
 
@@ -64,6 +98,7 @@ struct TreeWebView: NSViewRepresentable {
         if(window.updateTreeData) window.updateTreeData(\(health), \(season), \(streakTier), \(growthProgress));
         if(window.updateVillageMood) window.updateVillageMood(\(mood), \(population), \(recentTrend), \(totalWords));
         if(window.updateVillageState) window.updateVillageState('\(escapedVillageJSON)');
+        if(window.updateNebula) window.updateNebula(\(nebulaEntriesJSON));
         """
         nsView.evaluateJavaScript(js, completionHandler: nil)
     }
@@ -72,7 +107,63 @@ struct TreeWebView: NSViewRepresentable {
 
     class Coordinator: NSObject, WKScriptMessageHandler {
         var webView: WKWebView?
+        var scrollMonitor: Any?
+        var magnifyMonitor: Any?
+        var scrollLogCount = 0
         var pageReady = false
+
+        func installScrollMonitor(for webView: WKWebView) {
+            scrollLog("installScrollMonitor called — consume + synthetic dispatch mode")
+
+            scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self, weak webView] event in
+                guard let self, let webView else { return event }
+                guard let window = webView.window, event.window === window else { return event }
+                let point = webView.convert(event.locationInWindow, from: nil)
+                guard webView.bounds.contains(point) else { return event }
+
+                let deltaY = event.scrollingDeltaY
+                self.scrollLogCount += 1
+                if self.scrollLogCount <= 10 || self.scrollLogCount % 100 == 0 {
+                    scrollLog("SCROLL #\(self.scrollLogCount) deltaY=\(deltaY) — consumed, dispatching synthetic")
+                }
+                // Dispatch synthetic wheel event on the canvas for OrbitControls
+                webView.evaluateJavaScript("""
+                    (function(){
+                        var c = document.querySelector('canvas');
+                        if(c) c.dispatchEvent(new WheelEvent('wheel', {
+                            deltaY: \(-deltaY), deltaMode: 0,
+                            bubbles: true, cancelable: true
+                        }));
+                    })();
+                """, completionHandler: nil)
+                return nil // consume — WKWebView never sees it
+            }
+
+            magnifyMonitor = NSEvent.addLocalMonitorForEvents(matching: .magnify) { [weak webView] event in
+                guard let webView else { return event }
+                guard let window = webView.window, event.window === window else { return event }
+                let point = webView.convert(event.locationInWindow, from: nil)
+                guard webView.bounds.contains(point) else { return event }
+
+                let delta = event.magnification * 200
+                scrollLog("PINCH delta=\(delta)")
+                webView.evaluateJavaScript("""
+                    (function(){
+                        var c = document.querySelector('canvas');
+                        if(c) c.dispatchEvent(new WheelEvent('wheel', {
+                            deltaY: \(-delta), deltaMode: 0,
+                            bubbles: true, cancelable: true
+                        }));
+                    })();
+                """, completionHandler: nil)
+                return nil
+            }
+        }
+
+        deinit {
+            if let m = scrollMonitor { NSEvent.removeMonitor(m) }
+            if let m = magnifyMonitor { NSEvent.removeMonitor(m) }
+        }
         var introStarted = false
         var pendingWordDataJSON: String = "[]"
         var pendingUniqueWords: Int = 0
@@ -105,6 +196,10 @@ struct TreeWebView: NSViewRepresentable {
                     """,
                     completionHandler: nil
                 )
+            } else if message.name == "jsLog" {
+                if let msg = message.body as? String {
+                    scrollLog("JS: \(msg)")
+                }
             } else if message.name == "villagerKilled" {
                 if let jsonStr = message.body as? String,
                    let data = jsonStr.data(using: .utf8),

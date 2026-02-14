@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <style>
     * { margin: 0; padding: 0; }
-    body { overflow: hidden; background: #000; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
-    canvas { display: block; }
+    html, body { overflow: hidden; background: #000; font-family: -apple-system, BlinkMacSystemFont, sans-serif; overscroll-behavior: none; height: 100%; }
+    canvas { display: block; touch-action: none; }
 
     #popup {
         display: none;
@@ -189,6 +189,13 @@
         "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/"
     }
 }
+</script>
+<script>
+// Prevent WKWebView from intercepting scroll/wheel events — let Three.js OrbitControls handle them
+// Use capture phase to intercept before any other handler
+document.addEventListener('wheel', function(e) { e.preventDefault(); }, { passive: false, capture: true });
+document.addEventListener('gesturestart', function(e) { e.preventDefault(); }, { capture: true });
+document.addEventListener('gesturechange', function(e) { e.preventDefault(); }, { capture: true });
 </script>
 <script type="module" src="main.js"></script>
 </body>

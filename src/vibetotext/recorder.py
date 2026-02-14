@@ -359,6 +359,25 @@ class HotkeyListener:
             elif msg_type == _Msg.TIMEOUT:
                 self._handle_timeout()
 
+    # Normalize key names across platforms.
+    # On macOS pynput gives "ctrl"/"shift"/"alt" but on Windows gives
+    # "ctrl_l"/"ctrl_r"/"shift"/"shift_r"/"alt_l"/"alt_r"/"cmd" (win key).
+    _KEY_ALIASES = {
+        "ctrl_l": "ctrl",
+        "ctrl_r": "ctrl",
+        "shift_l": "shift",
+        "shift_r": "shift",
+        "alt_l": "alt",
+        "alt_r": "alt",
+        "alt_gr": "alt",
+        "cmd_l": "cmd",
+        "cmd_r": "cmd",
+    }
+
+    def _normalize_key(self, key_name):
+        """Normalize platform-specific key names to generic ones."""
+        return self._KEY_ALIASES.get(key_name, key_name)
+
     def start(self, on_start, on_stop):
         """Start listening for hotkeys."""
         from pynput import keyboard

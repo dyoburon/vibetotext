@@ -21,8 +21,15 @@ dependencies = [
 gemini = [
     "google-generativeai",
 ]
+windows = [
+    "pystray",
+    "Pillow",
+]
 dev = [
     "pytest",
+]
+build = [
+    "pyinstaller",
 ]
 
 [project.scripts]

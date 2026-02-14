@@ -2,6 +2,7 @@
 
 import argparse
 import os
+import platform
 import subprocess
 import sys
 import tempfile
@@ -17,14 +18,31 @@ from vibetotext.llm import cleanup_text, generate_implementation_plan
 from vibetotext.output import paste_at_cursor
 from vibetotext.history import TranscriptionHistory
 
+IS_WINDOWS = platform.system() == "Windows"
+
 
 def open_history_app():
-    """Open the history Electron app."""
-    # Find the history-app directory relative to this file
+    """Open the history viewer - uses tkinter on Windows, Electron on macOS."""
+    if IS_WINDOWS:
+        # On Windows, use the built-in tkinter history UI via history_ui module
+        try:
+            from vibetotext.history_ui import toggle_history
+            toggle_history()
+        except Exception as e:
+            print(f"[HISTORY] Failed to open history: {e}")
+        return
+
+    # macOS/Linux: Try the Electron history app
     src_dir = Path(__file__).parent.parent.parent
     history_app_dir = src_dir / "history-app"
 
     if not history_app_dir.exists():
+        # Fallback to tkinter history on any platform
+        try:
+            from vibetotext.history_ui import toggle_history
+            toggle_history()
+        except Exception:
+            pass
         return
 
     # Check if already running (single instance will handle focus)
@@ -273,6 +291,32 @@ def main():
     hotkey_listener = listener.start(on_start, on_stop)
     print("[DEBUG] Hotkey listener started! Ready for input.", flush=True)
 
+    # Start system tray on Windows
+    tray = None
+    if IS_WINDOWS:
+        try:
+            from vibetotext.tray_windows import SystemTray
+
+            def on_tray_history():
+                open_history_app()
+
+            def on_tray_exit():
+                print("[TRAY] Exit requested from tray menu")
+                if ui:
+                    try:
+                        ui.stop_ui()
+                    except Exception:
+                        pass
+                sys.exit(0)
+
+            tray = SystemTray(
+                on_show_history=on_tray_history,
+                on_exit=on_tray_exit,
+            )
+            tray.start()
+        except Exception as e:
+            print(f"[DEBUG] System tray disabled: {e}", flush=True)
+
     # Run main loop (process UI events if enabled)
     try:
         while True:
@@ -280,6 +324,8 @@ def main():
                 ui.process_ui_events()
             time.sleep(0.05)
     except KeyboardInterrupt:
+        if tray:
+            tray.stop()
         sys.exit(0)
 
 

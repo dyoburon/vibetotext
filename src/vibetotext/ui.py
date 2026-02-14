@@ -158,37 +158,41 @@ def _find_ui_binary():
         ui_binary_name = "vibetotext-ui"
         ui_script_name = "ui_standalone.py"  # Use native NSPanel on macOS
 
+    is_frozen = getattr(sys, 'frozen', False)
+
     # Check if we're running from a PyInstaller bundle
-    if getattr(sys, 'frozen', False):
+    if is_frozen:
         # Look for bundled UI binary next to the main executable
         base_dir = os.path.dirname(sys.executable)
         ui_binary = os.path.join(base_dir, ui_binary_name)
-        print(f"[UI] Looking for UI binary at: {ui_binary}")
+        print(f"[UI] Frozen mode. Looking for UI binary at: {ui_binary}", flush=True)
         if os.path.exists(ui_binary):
-            print(f"[UI] Found bundled UI binary")
+            print(f"[UI] Found bundled UI binary", flush=True)
             return ui_binary, []
 
         # Also check in Resources folder (for macOS .app bundles)
         if IS_MACOS:
             resources_dir = os.path.join(os.path.dirname(base_dir), "Resources")
             ui_binary = os.path.join(resources_dir, ui_binary_name)
-            print(f"[UI] Looking for UI binary at: {ui_binary}")
+            print(f"[UI] Looking for UI binary at: {ui_binary}", flush=True)
             if os.path.exists(ui_binary):
-                print(f"[UI] Found UI binary in Resources")
+                print(f"[UI] Found UI binary in Resources", flush=True)
                 return ui_binary, []
 
-        print(f"[UI] UI binary not found!")
+        print(f"[UI] UI binary not found next to exe!", flush=True)
+        # In frozen mode, don't fall through to sys.executable (it's the engine exe, not Python)
+        return None, None
 
     # Running from source - use Python to run the standalone script
     ui_script = os.path.join(os.path.dirname(__file__), ui_script_name)
     if os.path.exists(ui_script):
-        print(f"[UI] Running from source with script: {ui_script}")
+        print(f"[UI] Running from source with script: {ui_script}", flush=True)
         return sys.executable, [ui_script]
 
     # Fallback to tkinter version if native not found
     ui_script = os.path.join(os.path.dirname(__file__), "ui_tkinter.py")
     if os.path.exists(ui_script):
-        print(f"[UI] Falling back to tkinter UI: {ui_script}")
+        print(f"[UI] Falling back to tkinter UI: {ui_script}", flush=True)
         return sys.executable, [ui_script]
 
     return None, None
@@ -204,7 +208,7 @@ def _ensure_ui_process():
     # Find UI binary or script
     ui_exe, ui_args = _find_ui_binary()
     if ui_exe is None:
-        print("[UI] Could not find UI binary or script, UI disabled")
+        print("[UI] Could not find UI binary or script, UI disabled", flush=True)
         return
 
     # Clear any old IPC file
@@ -213,14 +217,17 @@ def _ensure_ui_process():
 
     # Build command
     cmd = [ui_exe] + (ui_args or []) + [_ipc_file]
-    print(f"[UI] Starting UI with command: {cmd}")
+    print(f"[UI] Starting UI with command: {cmd}", flush=True)
 
     # Start the UI process with error logging
     error_log = os.path.join(tempfile.gettempdir(), "vibetotext_ui_error.log")
 
-    # Windows-specific: hide console window
+    # Windows-specific: hide console window when launching Python interpreter
+    # (Don't use SW_HIDE for the standalone windowed .exe - it would hide tkinter)
     startupinfo = None
-    if IS_WINDOWS:
+    if IS_WINDOWS and ui_args:
+        # ui_args is non-empty when running from source (python.exe ui_tkinter.py)
+        # In that case, hide the Python console window
         startupinfo = subprocess.STARTUPINFO()
         startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
         startupinfo.wShowWindow = subprocess.SW_HIDE
@@ -232,7 +239,7 @@ def _ensure_ui_process():
             stderr=err_file,
             startupinfo=startupinfo,
         )
-    print(f"[UI] UI process started with PID: {_ui_process.pid}")
+    print(f"[UI] UI process started with PID: {_ui_process.pid}", flush=True)
 
 
 def show_recording():

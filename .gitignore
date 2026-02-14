@@ -11,14 +11,12 @@ env/
 *.egg-info/
 *.egg
 dist/
-build/
 *.manifest
-*.spec
 
-# PyInstaller
-*.spec
-build/
-dist/
+# PyInstaller - ignore root spec files but track build/ directory specs
+/*.spec
+# PyInstaller build output (not our build/ config directory)
+pyinstaller_build/
 
 # IDE
 .idea/

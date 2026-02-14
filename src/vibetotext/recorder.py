@@ -222,6 +222,25 @@ class HotkeyListener:
             if self.on_stop:
                 self.on_stop(mode)
 
+    # Normalize key names across platforms.
+    # On macOS pynput gives "ctrl"/"shift"/"alt" but on Windows gives
+    # "ctrl_l"/"ctrl_r"/"shift"/"shift_r"/"alt_l"/"alt_r"/"cmd" (win key).
+    _KEY_ALIASES = {
+        "ctrl_l": "ctrl",
+        "ctrl_r": "ctrl",
+        "shift_l": "shift",
+        "shift_r": "shift",
+        "alt_l": "alt",
+        "alt_r": "alt",
+        "alt_gr": "alt",
+        "cmd_l": "cmd",
+        "cmd_r": "cmd",
+    }
+
+    def _normalize_key(self, key_name):
+        """Normalize platform-specific key names to generic ones."""
+        return self._KEY_ALIASES.get(key_name, key_name)
+
     def start(self, on_start, on_stop):
         """Start listening for hotkeys."""
         from pynput import keyboard
@@ -241,6 +260,8 @@ class HotkeyListener:
             except AttributeError:
                 return
 
+            # Normalize platform-specific key names (e.g., ctrl_l -> ctrl)
+            key_name = self._normalize_key(key_name)
             self._pressed.add(key_name)
 
             # Check if any hotkey combo is pressed (check longer combos first)
@@ -273,6 +294,9 @@ class HotkeyListener:
             except AttributeError:
                 return
 
+            # Normalize platform-specific key names (e.g., ctrl_l -> ctrl)
+            key_name = self._normalize_key(key_name)
+
             # Use lock to prevent race condition when both hotkey parts release at once
             with self._lock:
                 # If any hotkey part is released while recording, stop
@@ -285,7 +309,7 @@ class HotkeyListener:
                     # Clear pressed set to avoid stale state
                     self._pressed.clear()
                     _log(f"HOTKEY: Released {key_name}, stopping recording mode={mode}")
-                    print(f"[HOTKEY] Stopping recording, mode={mode}")
+                    print(f"[HOTKEY] Stopping recording, mode={mode}", flush=True)
                     if self.on_stop:
                         _log(f"HOTKEY: Calling on_stop callback...")
                         stop_start = time.time()

@@ -2,6 +2,7 @@
   "dependencies": {
     "@fal-ai/client": "^1.9.1",
     "@gltf-transform/core": "^4.3.0",
-    "dotenv": "^17.3.1"
+    "dotenv": "^17.3.1",
+    "isosurface": "^1.0.0"
   }
 }

@@ -179,15 +179,15 @@ def main():
             print("[HISTORY] history-app/ directory not found.")
 
     def open_viz():
-        """Open the Word Galaxy visualization."""
+        """Open the Don't Anger the AI visualization."""
         import subprocess
         viz_dir = Path(__file__).parent.parent.parent / "native-app"
-        binary = viz_dir / ".build" / "debug" / "WordGalaxy"
+        binary = viz_dir / ".build" / "debug" / "DontAngerTheAI"
         if binary.exists():
             subprocess.Popen([str(binary)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            print("[VIZ] Opening Word Galaxy...")
+            print("[VIZ] Opening Don't Anger the AI...")
         else:
-            print("[VIZ] WordGalaxy binary not found. Run 'swift build' in native-app/ first.")
+            print("[VIZ] DontAngerTheAI binary not found. Run 'swift build' in native-app/ first.")
 
     def on_start(mode):
         try:

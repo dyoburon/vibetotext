@@ -1,5 +1,6 @@
 import { Document, NodeIO } from '@gltf-transform/core';
 import { fal } from '@fal-ai/client';
+import isosurface from 'isosurface';
 import fs from 'fs';
 import { config } from 'dotenv';
 config();
@@ -10,216 +11,152 @@ fal.config({
 });
 
 // ══════════════════════════════════════════
-// ── SKELETON (same positions as sky-entity.js) ──
+// ── SDF PRIMITIVES ──
 // ══════════════════════════════════════════
 
-const JOINTS = {
-    pelvis:     [0, -20, -45],
-    lowerSpine: [0, 0, -42],
-    midSpine:   [0, 18, -38],
-    upperSpine: [0, 32, -34],
-    neck:       [0, 42, -32],
-    head:       [0, 52, -30],
-    crown:      [0, 60, -28],
-    lShoulder:  [-18, 35, -30],
-    lUpperArm:  [-28, 25, -20],
-    lElbow:     [-32, 12, -10],
-    lForearm:   [-28, 5, 0],
-    lWrist:     [-22, 0, 8],
-    lFingers:   [-18, -2, 14],
-    rShoulder:  [18, 35, -30],
-    rUpperArm:  [30, 33, -22],
-    rElbow:     [42, 30, -18],
-    rForearm:   [55, 28, -16],
-    rWrist:     [65, 26, -15],
-    rFingers:   [72, 25, -15],
-    lHip:       [-10, -22, -45],
-    lKnee:      [-20, -55, -35],
-    lAnkle:     [-15, -85, -40],
-    lFoot:      [-12, -95, -35],
-    rHip:       [10, -22, -45],
-    rKnee:      [20, -55, -35],
-    rAnkle:     [15, -85, -40],
-    rFoot:      [12, -95, -35],
-};
+function len3(x, y, z) { return Math.sqrt(x * x + y * y + z * z); }
 
-const BONES = [
-    ['pelvis', 'lowerSpine'], ['lowerSpine', 'midSpine'],
-    ['midSpine', 'upperSpine'], ['upperSpine', 'neck'],
-    ['neck', 'head'], ['head', 'crown'],
-    ['upperSpine', 'lShoulder'], ['lShoulder', 'lUpperArm'],
-    ['lUpperArm', 'lElbow'], ['lElbow', 'lForearm'],
-    ['lForearm', 'lWrist'], ['lWrist', 'lFingers'],
-    ['upperSpine', 'rShoulder'], ['rShoulder', 'rUpperArm'],
-    ['rUpperArm', 'rElbow'], ['rElbow', 'rForearm'],
-    ['rForearm', 'rWrist'], ['rWrist', 'rFingers'],
-    ['pelvis', 'lHip'], ['lHip', 'lKnee'],
-    ['lKnee', 'lAnkle'], ['lAnkle', 'lFoot'],
-    ['pelvis', 'rHip'], ['rHip', 'rKnee'],
-    ['rKnee', 'rAnkle'], ['rAnkle', 'rFoot'],
-];
-
-// Radius for each bone's cylinder
-const BONE_RADIUS = {
-    'pelvis-lowerSpine': 6, 'lowerSpine-midSpine': 5.5, 'midSpine-upperSpine': 5,
-    'upperSpine-neck': 3, 'neck-head': 2.5, 'head-crown': 3,
-    'upperSpine-lShoulder': 3, 'lShoulder-lUpperArm': 2.8, 'lUpperArm-lElbow': 2.5,
-    'lElbow-lForearm': 2.2, 'lForearm-lWrist': 2, 'lWrist-lFingers': 1.5,
-    'upperSpine-rShoulder': 3, 'rShoulder-rUpperArm': 2.8, 'rUpperArm-rElbow': 2.5,
-    'rElbow-rForearm': 2.2, 'rForearm-rWrist': 2, 'rWrist-rFingers': 1.5,
-    'pelvis-lHip': 4, 'lHip-lKnee': 3.5, 'lKnee-lAnkle': 2.5, 'lAnkle-lFoot': 2,
-    'pelvis-rHip': 4, 'rHip-rKnee': 3.5, 'rKnee-rAnkle': 2.5, 'rAnkle-rFoot': 2,
-};
-
-// Joint sphere radius
-const JOINT_RADIUS = {
-    head: 8, pelvis: 7, upperSpine: 5, neck: 3, crown: 3,
-    lShoulder: 4, rShoulder: 4, lElbow: 3, rElbow: 3,
-    lHip: 4.5, rHip: 4.5, lKnee: 3.5, rKnee: 3.5,
-    lWrist: 2.5, rWrist: 2.5, lFingers: 2, rFingers: 2,
-    lAnkle: 2.5, rAnkle: 2.5, lFoot: 2, rFoot: 2,
-};
-const DEFAULT_JOINT_RADIUS = 3;
-
-// ══════════════════════════════════════════
-// ── GEOMETRY GENERATION ──
-// ══════════════════════════════════════════
-
-function createSphere(center, radius, segments = 12) {
-    const positions = [];
-    const indices = [];
-
-    // Generate vertices
-    for (let lat = 0; lat <= segments; lat++) {
-        const theta = (lat / segments) * Math.PI;
-        const sinT = Math.sin(theta), cosT = Math.cos(theta);
-        for (let lon = 0; lon <= segments; lon++) {
-            const phi = (lon / segments) * 2 * Math.PI;
-            positions.push(
-                center[0] + radius * sinT * Math.cos(phi),
-                center[1] + radius * cosT,
-                center[2] + radius * sinT * Math.sin(phi)
-            );
-        }
-    }
-
-    // Generate triangles
-    for (let lat = 0; lat < segments; lat++) {
-        for (let lon = 0; lon < segments; lon++) {
-            const a = lat * (segments + 1) + lon;
-            const b = a + segments + 1;
-            indices.push(a, b, a + 1);
-            indices.push(b, b + 1, a + 1);
-        }
-    }
-
-    return { positions, indices };
+function sdSphere(px, py, pz, cx, cy, cz, r) {
+    return len3(px - cx, py - cy, pz - cz) - r;
 }
 
-function createCylinder(p0, p1, radius, segments = 10) {
-    const positions = [];
-    const indices = [];
-
-    // Direction vector
-    const dx = p1[0] - p0[0], dy = p1[1] - p0[1], dz = p1[2] - p0[2];
-    const len = Math.sqrt(dx * dx + dy * dy + dz * dz);
-    if (len < 0.001) return { positions: [], indices: [] };
-
-    const dirX = dx / len, dirY = dy / len, dirZ = dz / len;
-
-    // Find perpendicular vectors
-    let upX = 0, upY = 1, upZ = 0;
-    if (Math.abs(dirY) > 0.9) { upX = 1; upY = 0; }
-
-    // perp1 = cross(dir, up)
-    let p1x = dirY * upZ - dirZ * upY;
-    let p1y = dirZ * upX - dirX * upZ;
-    let p1z = dirX * upY - dirY * upX;
-    const p1L = Math.sqrt(p1x * p1x + p1y * p1y + p1z * p1z);
-    p1x /= p1L; p1y /= p1L; p1z /= p1L;
-
-    // perp2 = cross(dir, perp1)
-    const p2x = dirY * p1z - dirZ * p1y;
-    const p2y = dirZ * p1x - dirX * p1z;
-    const p2z = dirX * p1y - dirY * p1x;
-
-    // Generate ring at each end
-    for (const baseP of [p0, p1]) {
-        for (let i = 0; i <= segments; i++) {
-            const angle = (i / segments) * Math.PI * 2;
-            const cosA = Math.cos(angle), sinA = Math.sin(angle);
-            positions.push(
-                baseP[0] + (p1x * cosA + p2x * sinA) * radius,
-                baseP[1] + (p1y * cosA + p2y * sinA) * radius,
-                baseP[2] + (p1z * cosA + p2z * sinA) * radius
-            );
-        }
-    }
-
-    // Connect rings with triangles
-    const ring = segments + 1;
-    for (let i = 0; i < segments; i++) {
-        const a = i, b = i + ring;
-        indices.push(a, b, a + 1);
-        indices.push(b, b + 1, a + 1);
-    }
-
-    return { positions, indices };
+function sdCapsule(px, py, pz, ax, ay, az, bx, by, bz, r) {
+    const abx = bx - ax, aby = by - ay, abz = bz - az;
+    const apx = px - ax, apy = py - ay, apz = pz - az;
+    const ab2 = abx * abx + aby * aby + abz * abz;
+    let t = ab2 > 0 ? (apx * abx + apy * aby + apz * abz) / ab2 : 0;
+    t = Math.max(0, Math.min(1, t));
+    return len3(px - (ax + t * abx), py - (ay + t * aby), pz - (az + t * abz)) - r;
 }
 
-function mergeMeshes(meshes) {
-    const allPositions = [];
-    const allIndices = [];
-    let vertexOffset = 0;
+function sdTaperedCapsule(px, py, pz, ax, ay, az, bx, by, bz, ra, rb) {
+    const abx = bx - ax, aby = by - ay, abz = bz - az;
+    const apx = px - ax, apy = py - ay, apz = pz - az;
+    const ab2 = abx * abx + aby * aby + abz * abz;
+    let t = ab2 > 0 ? (apx * abx + apy * aby + apz * abz) / ab2 : 0;
+    t = Math.max(0, Math.min(1, t));
+    const r = ra + t * (rb - ra);
+    return len3(px - (ax + t * abx), py - (ay + t * aby), pz - (az + t * abz)) - r;
+}
 
-    for (const mesh of meshes) {
-        allPositions.push(...mesh.positions);
-        for (const idx of mesh.indices) {
-            allIndices.push(idx + vertexOffset);
-        }
-        vertexOffset += mesh.positions.length / 3;
-    }
+// Ellipsoid SDF (approximate)
+function sdEllipsoid(px, py, pz, cx, cy, cz, rx, ry, rz) {
+    const dx = (px - cx) / rx, dy = (py - cy) / ry, dz = (pz - cz) / rz;
+    const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    const minR = Math.min(rx, ry, rz);
+    return (d - 1.0) * minR;
+}
 
-    return {
-        positions: new Float32Array(allPositions),
-        indices: new Uint32Array(allIndices),
-    };
+function smoothMin(a, b, k) {
+    const h = Math.max(k - Math.abs(a - b), 0) / k;
+    return Math.min(a, b) - h * h * h * k * (1 / 6);
 }
 
 // ══════════════════════════════════════════
-// ── BUILD COARSE MESH ──
+// ── ENTITY SDF — robed cosmic spirit ──
+// ══════════════════════════════════════════
+
+function entitySDF(px, py, pz) {
+    const K = 10; // smooth blend factor (higher = smoother joins, fewer holes)
+    let d = 1e9;
+
+    // The entity is HUNCHED FORWARD. The spine curves forward as it goes up.
+    // Lower body is at z≈-50 (back), upper body leans to z≈-15 (forward).
+    // Head is forward and DOWN, roughly level with shoulders.
+
+    // ── Robe bottom: gathered underneath, crouching ──
+    d = smoothMin(d, sdEllipsoid(px,py,pz, 0,-55,-48, 18, 22, 14), K);
+    // Robe mid
+    d = smoothMin(d, sdTaperedCapsule(px,py,pz, 0,-55,-48, 0,-25,-44, 18, 16), K);
+    // Lower torso (starting to lean forward)
+    d = smoothMin(d, sdTaperedCapsule(px,py,pz, 0,-25,-44, 0,0,-36, 16, 17), K);
+    // Mid torso (leaning more forward)
+    d = smoothMin(d, sdTaperedCapsule(px,py,pz, 0,0,-36, 0,18,-26, 17, 18), K);
+    // Upper torso / chest (very forward now, broad)
+    d = smoothMin(d, sdTaperedCapsule(px,py,pz, 0,18,-26, 0,30,-20, 18, 16), K);
+
+    // Torso volume — wide robed body, leaning forward
+    d = smoothMin(d, sdEllipsoid(px,py,pz, 0,-5,-34, 20, 30, 14), K);
+    // Upper chest breadth
+    d = smoothMin(d, sdEllipsoid(px,py,pz, 0,22,-22, 22, 14, 12), K);
+
+    // ── Shoulders (broad, forward) ──
+    d = smoothMin(d, sdCapsule(px,py,pz, -22,28,-20, 22,28,-20, 8), K);
+
+    // ── Neck (short, forward) ──
+    d = smoothMin(d, sdTaperedCapsule(px,py,pz, 0,30,-20, 0,36,-16, 7, 5), K);
+
+    // ── Head (forward and slightly down — hunched) ──
+    d = smoothMin(d, sdSphere(px,py,pz, 0,40,-12, 10), K);
+
+    // ── Hood wrapping over and behind head ──
+    d = smoothMin(d, sdTaperedCapsule(px,py,pz, 0,28,-24, 0,44,-12, 14, 12), K);
+    d = smoothMin(d, sdEllipsoid(px,py,pz, 0,38,-18, 14, 12, 12), K);
+
+    // ── Left arm: reaches DOWN and FORWARD to cradle ──
+    // Shoulder
+    d = smoothMin(d, sdTaperedCapsule(px,py,pz, -22,28,-20, -30,18,-12, 6, 5), K);
+    // Upper arm going down
+    d = smoothMin(d, sdTaperedCapsule(px,py,pz, -30,18,-12, -32,4,-2, 5, 4.5), K);
+    // Forearm curving down and forward
+    d = smoothMin(d, sdTaperedCapsule(px,py,pz, -32,4,-2, -28,-12,8, 4.5, 4), K);
+    // Wrist to hand (reaching low)
+    d = smoothMin(d, sdTaperedCapsule(px,py,pz, -28,-12,8, -22,-20,14, 4, 4.5), K);
+    // Hand (open palm, wide)
+    d = smoothMin(d, sdEllipsoid(px,py,pz, -20,-22,16, 6, 4, 5), K);
+
+    // ── Right arm: extends OUT to the right and slightly down ──
+    // Shoulder
+    d = smoothMin(d, sdTaperedCapsule(px,py,pz, 22,28,-20, 34,24,-16, 6, 5), K);
+    // Upper arm
+    d = smoothMin(d, sdTaperedCapsule(px,py,pz, 34,24,-16, 48,18,-12, 5, 4.5), K);
+    // Forearm
+    d = smoothMin(d, sdTaperedCapsule(px,py,pz, 48,18,-12, 62,12,-10, 4.5, 3.5), K);
+    // Wrist to hand
+    d = smoothMin(d, sdTaperedCapsule(px,py,pz, 62,12,-10, 72,8,-8, 3.5, 3), K);
+    // Hand
+    d = smoothMin(d, sdEllipsoid(px,py,pz, 74,7,-8, 5, 3, 4), K);
+
+    // ── Back of robe (the hunch creates a big curved back) ──
+    d = smoothMin(d, sdEllipsoid(px,py,pz, 0,12,-38, 16, 22, 10), K);
+
+    return d;
+}
+
+// ══════════════════════════════════════════
+// ── BUILD COARSE MESH (marching cubes via isosurface lib) ──
 // ══════════════════════════════════════════
 
 function buildCoarseMesh() {
-    const meshes = [];
+    const RESOLUTION = 80;
+    const BOUNDS = [[-50, -85, -70], [90, 60, 30]];
 
-    // Spheres at each joint
-    for (const [name, pos] of Object.entries(JOINTS)) {
-        const r = JOINT_RADIUS[name] || DEFAULT_JOINT_RADIUS;
-        meshes.push(createSphere(pos, r));
+    console.log(`  Marching cubes: resolution=${RESOLUTION}`);
+
+    const mesh = isosurface.marchingCubes(
+        [RESOLUTION, RESOLUTION, RESOLUTION],
+        (x, y, z) => entitySDF(x, y, z),
+        BOUNDS,
+    );
+
+    // Flatten positions and cells into typed arrays
+    const positions = new Float32Array(mesh.positions.length * 3);
+    for (let i = 0; i < mesh.positions.length; i++) {
+        positions[i * 3] = mesh.positions[i][0];
+        positions[i * 3 + 1] = mesh.positions[i][1];
+        positions[i * 3 + 2] = mesh.positions[i][2];
     }
 
-    // Cylinders for each bone
-    for (const [j0Name, j1Name] of BONES) {
-        const p0 = JOINTS[j0Name], p1 = JOINTS[j1Name];
-        const key = `${j0Name}-${j1Name}`;
-        const r = BONE_RADIUS[key] || 2.5;
-        meshes.push(createCylinder(p0, p1, r));
+    const indices = new Uint32Array(mesh.cells.length * 3);
+    for (let i = 0; i < mesh.cells.length; i++) {
+        indices[i * 3] = mesh.cells[i][0];
+        indices[i * 3 + 1] = mesh.cells[i][1];
+        indices[i * 3 + 2] = mesh.cells[i][2];
     }
 
-    // Extra torso volume: a big ellipsoid between shoulders and hips
-    // Approximate with a scaled sphere
-    const torsoCenter = [0, 5, -40];
-    const torsoMesh = createSphere(torsoCenter, 1, 16);
-    // Scale the torso sphere into an ellipsoid
-    for (let i = 0; i < torsoMesh.positions.length; i += 3) {
-        torsoMesh.positions[i] *= 15;     // X width
-        torsoMesh.positions[i + 1] *= 28; // Y height
-        torsoMesh.positions[i + 2] *= 8;  // Z depth
-    }
-    meshes.push(torsoMesh);
+    console.log(`  ${mesh.positions.length} vertices, ${mesh.cells.length} triangles`);
 
-    return mergeMeshes(meshes);
+    return { positions, indices };
 }
 
 // ══════════════════════════════════════════
@@ -261,14 +198,16 @@ async function exportGLB(mesh, filename) {
 
 async function callUltraShape(meshPath, imagePath) {
     console.log('Uploading mesh to fal.ai storage...');
-    const meshFile = new Blob([fs.readFileSync(meshPath)], { type: 'model/gltf-binary' });
+    const meshBuf = fs.readFileSync(meshPath);
+    const meshFile = new File([meshBuf], 'coarse-mesh.glb', { type: 'model/gltf-binary' });
     const meshUrl = await fal.storage.upload(meshFile);
     console.log(`Mesh uploaded: ${meshUrl}`);
 
     let imageUrl;
     if (imagePath) {
         console.log('Uploading reference image...');
-        const imgFile = new Blob([fs.readFileSync(imagePath)], { type: 'image/png' });
+        const imgBuf = fs.readFileSync(imagePath);
+        const imgFile = new File([imgBuf], 'reference.png', { type: 'image/png' });
         imageUrl = await fal.storage.upload(imgFile);
         console.log(`Image uploaded: ${imageUrl}`);
     } else {
@@ -299,12 +238,13 @@ async function callUltraShape(meshPath, imagePath) {
     console.log('\nResult:', JSON.stringify(result.data || result, null, 2));
 
     // Download the result GLB
-    if (result.data?.model_mesh?.url || result.model_mesh?.url) {
-        const url = result.data?.model_mesh?.url || result.model_mesh?.url;
+    const meshResult = result.data?.model_glb || result.model_glb || result.data?.model_mesh || result.model_mesh;
+    if (meshResult?.url) {
+        const url = meshResult.url;
         console.log(`\nDownloading refined mesh from: ${url}`);
         const response = await fetch(url);
         const arrayBuf = await response.arrayBuffer();
-        const outPath = 'native-app/Sources/WordGalaxy/Web/models/cosmic-entity.glb';
+        const outPath = 'native-app/Sources/DontAngerTheAI/Web/models/cosmic-entity.glb';
         fs.writeFileSync(outPath, Buffer.from(arrayBuf));
         console.log(`Saved refined mesh to: ${outPath} (${(arrayBuf.byteLength / 1024).toFixed(1)} KB)`);
     }
@@ -339,5 +279,6 @@ async function main() {
 
 main().catch(err => {
     console.error('Error:', err);
+    if (err.body) console.error('Body:', JSON.stringify(err.body, null, 2));
     process.exit(1);
 });

@@ -33,8 +33,8 @@ controls.dampingFactor = 0.05;
 controls.autoRotate = true;
 controls.autoRotateSpeed = 0.25;
 controls.target.set(0, PLANET_RADIUS * 0.3, 0);
-controls.minDistance = PLANET_RADIUS + 5;
-controls.maxDistance = 120;
+controls.minDistance = 10;
+controls.maxDistance = 160;
 controls.maxPolarAngle = Math.PI;
 
 // ── Sky ──
@@ -202,6 +202,8 @@ window.initTreeWords = function(wordData, uniqueWords, totalWords, strata) {
     totalWords = totalWords || wordData.reduce((s, w) => s + w.count, 0);
     strata = strata || [];
 
+    const wasAlreadyDone = getPhase() === 'done';
+
     generateTree(scene, camera, controls, 42, uniqueWords, strata);
 
     const { leafPositions, leafStartPerLevel, maxTreeY, treeGroup } = getTreeState();
@@ -221,6 +223,10 @@ window.initTreeWords = function(wordData, uniqueWords, totalWords, strata) {
         const rng = mulberry32(314);
         startRainSprites(scene, wordData.map(w => w.word), maxTreeY, rng);
         startRainGrowth(wordData.map(w => w.word), totalWords, maxTreeY);
+    } else if (wasAlreadyDone) {
+        // Late arrival: fallback timeout already fired, show everything immediately
+        skipToDone(getIntroDeps());
+        for (const s of getLeafWordSprites()) s.visible = true;
     }
 };
 

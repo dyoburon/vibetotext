@@ -39,10 +39,25 @@ final class AppState: ObservableObject {
         startAudioIPC()
     }
 
+    static func debugLog(_ msg: String) {
+        let line = "[\(Date())] \(msg)\n"
+        let path = "/tmp/wordgalaxy_debug.log"
+        if let fh = FileHandle(forWritingAtPath: path) {
+            fh.seekToEndOfFile()
+            fh.write(line.data(using: .utf8)!)
+            fh.closeFile()
+        } else {
+            FileManager.default.createFile(atPath: path, contents: line.data(using: .utf8))
+        }
+    }
+
     func reload() {
+        let reloadStart = Date()
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
+            AppState.debugLog("reload() start")
             let entries = self.db.fetchAllEntries()
+            AppState.debugLog("reload() fetched \(entries.count) entries in \(String(format: "%.2f", Date().timeIntervalSince(reloadStart)))s")
             let frequencies = WordFrequencyEngine.buildFrequencyMap(from: entries)
             let topWords = Set(frequencies.prefix(8000).map(\.word))
             let coOccurrence = WordFrequencyEngine.buildCoOccurrence(
@@ -97,6 +112,8 @@ final class AppState: ObservableObject {
             let treeStrataJSON = (try? JSONSerialization.data(withJSONObject: strataArray))
                 .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
 
+            let elapsed = Date().timeIntervalSince(reloadStart)
+            AppState.debugLog("reload() done in \(String(format: "%.2f", elapsed))s — entries=\(entries.count), uniqueWords=\(frequencies.count), totalWords=\(totalWords), wordDataJSON len=\(treeWordDataJSON.count)")
             DispatchQueue.main.async {
                 self.entries = entries
                 self.wordFrequencies = frequencies
@@ -111,6 +128,7 @@ final class AppState: ObservableObject {
                 self.villageState = updatedVillageState
                 self.villageStateJSON = villageJSON
                 self.isLoading = false
+                AppState.debugLog("main thread updated, treeWordDataJSON len=\(treeWordDataJSON.count)")
             }
         }
     }
@@ -130,22 +148,21 @@ final class AppState: ObservableObject {
         let now = Date()
         var changed = false
 
-        // ── Birth logic: 1 new villager per 1000 new words ──
-        let newWords = totalWords - state.totalWordsAtLastBirth
-        if newWords >= 1000 {
-            let births = newWords / 1000
+        // ── Catch-up: ensure village has enough villagers for word count ──
+        let expectedCount = max(5, min(50, totalWords / 2500))
+        let currentCount = state.villagers.count
+        if expectedCount > currentCount {
             let buildingCount = state.buildings.count
             let baseRadius = 12.0 + sqrt(Double(buildingCount)) * 2.0
 
-            for _ in 0..<births {
+            for _ in currentCount..<expectedCount {
                 let vid = state.nextVillagerId
                 let role = VillageStateManager.nextRole(existingVillagers: state.villagers)
-                let angle = Double(vid) * 2.399 // golden angle
+                let angle = Double(vid) * 2.399
                 let radius = baseRadius + Double(vid % 5) * 3.0
                 let bx = cos(angle) * radius
                 let bz = sin(angle) * radius
 
-                // Create a building for the new villager
                 let buildingId = state.buildings.count
                 let buildingType: BuildingType = {
                     switch role {
@@ -155,27 +172,60 @@ final class AppState: ObservableObject {
                     case .scholar, .mayor: return .cottage
                     }
                 }()
-                let building = BuildingState(
-                    id: buildingId,
-                    type: buildingType,
-                    owner: vid,
+                state.buildings.append(BuildingState(
+                    id: buildingId, type: buildingType, owner: vid,
                     position: VillagePosition(x: bx, z: bz),
-                    burned: false,
-                    size: 0.8 + Double(vid % 4) * 0.3
-                )
-                state.buildings.append(building)
-
-                let villager = VillagerState(
+                    burned: false, size: 0.8 + Double(vid % 4) * 0.3
+                ))
+                state.villagers.append(VillagerState(
                     id: vid,
                     name: VillageNameGenerator.name(forId: vid),
-                    role: role,
-                    bornAt: now,
-                    alive: true,
-                    diedAt: nil,
+                    role: role, bornAt: now, alive: true, diedAt: nil,
                     position: VillagePosition(x: bx + 2, z: bz + 2),
                     homeBuilding: buildingId
-                )
-                state.villagers.append(villager)
+                ))
+                state.nextVillagerId = vid + 1
+            }
+            state.totalWordsAtLastBirth = totalWords
+            changed = true
+        }
+
+        // ── Incremental births: 1 new villager per 2500 new words ──
+        let newWords = totalWords - state.totalWordsAtLastBirth
+        if newWords >= 2500 && state.villagers.count < 50 {
+            let births = min(newWords / 2500, 50 - state.villagers.count)
+            let buildingCount = state.buildings.count
+            let baseRadius = 12.0 + sqrt(Double(buildingCount)) * 2.0
+
+            for _ in 0..<births {
+                let vid = state.nextVillagerId
+                let role = VillageStateManager.nextRole(existingVillagers: state.villagers)
+                let angle = Double(vid) * 2.399
+                let radius = baseRadius + Double(vid % 5) * 3.0
+                let bx = cos(angle) * radius
+                let bz = sin(angle) * radius
+
+                let buildingId = state.buildings.count
+                let buildingType: BuildingType = {
+                    switch role {
+                    case .farmer: return .farm
+                    case .guard_: return .barracks
+                    case .builder, .blacksmith: return .workshop
+                    case .scholar, .mayor: return .cottage
+                    }
+                }()
+                state.buildings.append(BuildingState(
+                    id: buildingId, type: buildingType, owner: vid,
+                    position: VillagePosition(x: bx, z: bz),
+                    burned: false, size: 0.8 + Double(vid % 4) * 0.3
+                ))
+                state.villagers.append(VillagerState(
+                    id: vid,
+                    name: VillageNameGenerator.name(forId: vid),
+                    role: role, bornAt: now, alive: true, diedAt: nil,
+                    position: VillagePosition(x: bx + 2, z: bz + 2),
+                    homeBuilding: buildingId
+                ))
                 state.nextVillagerId = vid + 1
             }
             state.totalWordsAtLastBirth = totalWords

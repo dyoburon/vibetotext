@@ -116,8 +116,11 @@ fragment float4 fragment_sphere(SphereVOut in [[stage_in]],
     float t = u.time;
     float amp = u.amplitude;
 
-    // Fresnel rim — strong edge glow
-    float fresnel = pow(1.0 - in.ndotv, 3.0);
+    // Fresnel rim — recompute from smooth sphere normal to avoid triangle faceting
+    float3 smoothNormal = normalize(p);
+    float3 viewDir = normalize(float3(0, 0, 1));
+    float ndotv = abs(dot(smoothNormal, viewDir));
+    float fresnel = pow(1.0 - ndotv, 3.0);
 
     // Screen-space Y for smooth scan lines (pixel-aligned, no mesh artifacts)
     float screenY = in.position.y;
@@ -150,24 +153,28 @@ fragment float4 fragment_sphere(SphereVOut in [[stage_in]],
         lines += smoothstep(lineThick, 0.0, d);
         lines += smoothstep(lineGlow, lineThick, d) * 0.25;
     }
-    lines = min(lines, 1.5);
-    lines *= (1.0 + amp * 1.0);
+    lines = min(lines, 1.0);
+    lines *= (0.8 + amp * 0.5);
 
     // Flicker — screen-space for smoothness
     float flicker = 1.0 - amp * 0.3 * sin(t * 17.0 + screenY * 0.5);
 
     // Combine: rim + scan lines + equator lines
-    float intensity = fresnel * 0.6
-                    + scanLines * 0.15
-                    + lines * 0.5
-                    + 0.04;  // base fill
-    intensity *= flicker;
+    float baseIntensity = fresnel * 0.324
+                        + scanLines * 0.081
+                        + 0.024;  // base fill
+    float lineIntensity = lines * 0.45;
+    float intensity = (baseIntensity + lineIntensity) * flicker;
 
-    // Color: gradient across sphere — blue top to pink bottom
-    float3 blueCol = float3(0.133, 0.592, 0.914);           // #2297E9
-    float3 pinkCol = float3(0.769, 0.396, 0.557);           // #C4658E
-    float grad = p.x * 0.5 + 0.5;  // -1..1 → 0..1, left to right
-    float3 col = mix(pinkCol, blueCol, grad);
+    // Color: gradient across sphere — blue to pink, 10% dimmer
+    float3 blueCol = float3(0.096, 0.426, 0.658);
+    float3 pinkCol = float3(0.554, 0.285, 0.401);
+    float grad = p.x * 0.5 + 0.5;
+    float3 sphereCol = mix(pinkCol, blueCol, grad);
+
+    // Lines get a brighter white tint
+    float lineFactor = clamp(lineIntensity * 2.0, 0.0, 1.0);
+    float3 col = mix(sphereCol, float3(0.9, 0.92, 0.95), lineFactor);
 
     float a = clamp(intensity, 0.0, 1.0);
     return float4(col * a, a);
@@ -244,8 +251,8 @@ fragment float4 fragment_composite(QuadVOut in [[stage_in]],
     float4 result = float4(bg_col * bg_a, bg_a);
     result.rgb = result.rgb * (1.0 - main_c.a) + main_c.rgb;
     result.a = max(result.a, main_c.a);
-    result.rgb += bloom_c.rgb * 1.8;
-    result.a = max(result.a, bloom_c.a * 1.8);
+    result.rgb += bloom_c.rgb * 0.9;
+    result.a = max(result.a, bloom_c.a * 0.9);
     result.rgb += dot_col * dot_a;
     result.a = max(result.a, dot_a);
     return result;

@@ -44,17 +44,22 @@ function createBuilding(size, rng) {
     const d = 3.0 + rng() * size * 2.4;
 
     const bodyGeo = new THREE.BoxGeometry(w, h, d);
+    // Colorful walls — wide hue range for a vibrant village
+    const wallHues = [0.0, 0.05, 0.08, 0.12, 0.15, 0.28, 0.45, 0.55, 0.6, 0.85, 0.92];
+    const wallHue = wallHues[Math.floor(rng() * wallHues.length)];
     const bodyMat = new THREE.MeshStandardMaterial({
-        color: new THREE.Color().setHSL(0.08 + rng() * 0.06, 0.3 + rng() * 0.3, 0.35 + rng() * 0.15),
-        roughness: 0.9
+        color: new THREE.Color().setHSL(wallHue, 0.45 + rng() * 0.35, 0.5 + rng() * 0.25),
+        roughness: 0.85
     });
     const body = new THREE.Mesh(bodyGeo, bodyMat);
     body.position.y = h / 2;
     group.add(body);
 
     const roofGeo = new THREE.ConeGeometry(Math.max(w, d) * 0.75, h * 0.45, 4);
+    // Varied roof colors — terracotta, slate, teal, burgundy, mossy green
+    const roofColors = [0xB85533, 0x6B7B8D, 0x2D6A5A, 0x8B2252, 0x4A6741, 0xCC6633, 0x5B4A6A, 0x7B6B3A];
     const roofMat = new THREE.MeshStandardMaterial({
-        color: new THREE.Color(0x8B4513).multiplyScalar(0.6 + rng() * 0.4),
+        color: new THREE.Color(roofColors[Math.floor(rng() * roofColors.length)]).multiplyScalar(0.7 + rng() * 0.3),
         roughness: 0.85
     });
     const roof = new THREE.Mesh(roofGeo, roofMat);
@@ -63,7 +68,8 @@ function createBuilding(size, rng) {
     group.add(roof);
 
     const doorGeo = new THREE.PlaneGeometry(w * 0.3, h * 0.4);
-    const doorMat = new THREE.MeshStandardMaterial({ color: 0x2a1506 });
+    const doorColors = [0x2a1506, 0x4a2010, 0x1a3050, 0x3a1525, 0x2a3a15, 0x502020];
+    const doorMat = new THREE.MeshStandardMaterial({ color: doorColors[Math.floor(rng() * doorColors.length)] });
     const door = new THREE.Mesh(doorGeo, doorMat);
     door.position.set(0, h * 0.2, d / 2 + 0.01);
     group.add(door);

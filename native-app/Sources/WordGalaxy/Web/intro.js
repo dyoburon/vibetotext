@@ -80,7 +80,7 @@ export function updateRainGrowthPhase(dt, t, deps) {
             const fadeIn = Math.min(age * 2, 1);
             const fadeGround = Math.max(0, Math.min(1, (sprite.position.y - PLANET_RADIUS + 3) / 6));
             sprite.material.opacity = 0.7 * fadeIn * fadeGround;
-            if (sprite.position.y < -PLANET_RADIUS - 3) {
+            if (sprite.position.y < PLANET_RADIUS - 3) {
                 sprite.position.y = PLANET_RADIUS + topY * 0.7 + Math.random() * topY * 0.5;
                 sprite.position.x = (Math.random() - 0.5) * spreadW;
                 sprite.position.z = (Math.random() - 0.5) * spreadW;

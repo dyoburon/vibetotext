@@ -50,8 +50,8 @@ final class SpherePreviewRenderer: NSObject, MTKViewDelegate {
             return nil
         }
 
-        // Sphere mesh (16 lat x 24 lon, same as ui_standalone.py)
-        let (meshData, vertCount) = SpherePreviewRenderer.generateSphereMesh(nLat: 16, nLon: 24)
+        // Sphere mesh (48 lat x 64 lon, same as ui_standalone.py)
+        let (meshData, vertCount) = SpherePreviewRenderer.generateSphereMesh(nLat: 48, nLon: 64)
         self.numVertices = vertCount
         self.vertexBuffer = device.makeBuffer(bytes: meshData, length: meshData.count, options: .storageModeShared)!
 

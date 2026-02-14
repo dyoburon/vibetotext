@@ -5,7 +5,11 @@
       "WebFetch(domain:threejsroadmap.com)",
       "WebFetch(domain:inspirnathan.com)",
       "WebFetch(domain:blog.maximeheckel.com)",
-      "WebFetch(domain:tonisagrista.com)"
+      "WebFetch(domain:tonisagrista.com)",
+      "WebSearch",
+      "WebFetch(domain:platform.tripo3d.ai)",
+      "WebFetch(domain:apidog.com)",
+      "WebFetch(domain:github.com)"
     ]
   }
 }

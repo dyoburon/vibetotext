@@ -30,7 +30,7 @@ with open(_shader_path, "r") as _f:
 
 # ─── Mesh generation ─────────────────────────────────────────────────────────
 
-def generate_sphere_mesh(n_lat=16, n_lon=24):
+def generate_sphere_mesh(n_lat=48, n_lon=64):
     """UV sphere with barycentric coords for panelized edge rendering.
     Returns (vertex_bytes, num_vertices).
     Vertex layout: position(3f) + normal(3f) + barycentric(3f) = 36 bytes.
@@ -250,7 +250,7 @@ class MetalRenderer:
 
         # MVP matrix
         proj = mat4_perspective(math.radians(45), 1.0, 0.1, 100.0)
-        view = mat4_translate(0, 0, -3.2)
+        view = mat4_translate(0, 0, -3.8)
         model = mat4_mul(mat4_rotate_x(0.4), mat4_rotate_y(self.rotation))
         mvp = mat4_mul(proj, mat4_mul(view, model))
 

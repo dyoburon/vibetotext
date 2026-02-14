@@ -43,11 +43,14 @@ struct TreeWebView: NSViewRepresentable {
 
         // Send word data once the page is ready
         if !coord.introStarted && wordDataJSON != "[]" {
+            AppState.debugLog("updateNSView: data ready, uniqueWords=\(uniqueWords), totalWords=\(totalWords), jsonLen=\(wordDataJSON.count)")
             coord.pendingWordDataJSON = wordDataJSON
             coord.pendingUniqueWords = uniqueWords
             coord.pendingTotalWords = totalWords
             coord.pendingStrataJSON = strataJSON
             coord.tryInit()
+        } else if !coord.introStarted {
+            AppState.debugLog("updateNSView: waiting (wordDataJSON empty, pageReady=\(coord.pageReady))")
         }
 
         // Ongoing tree data updates
@@ -112,12 +115,20 @@ struct TreeWebView: NSViewRepresentable {
         }
 
         func tryInit() {
-            guard pageReady, !introStarted, pendingWordDataJSON != "[]", let webView else { return }
+            guard pageReady, !introStarted, pendingWordDataJSON != "[]", let webView else {
+                AppState.debugLog("tryInit SKIP: pageReady=\(pageReady), introStarted=\(introStarted), hasData=\(pendingWordDataJSON != "[]"), hasWebView=\(self.webView != nil)")
+                return
+            }
             introStarted = true
-            webView.evaluateJavaScript(
-                "if(window.initTreeWords) window.initTreeWords(\(pendingWordDataJSON), \(pendingUniqueWords), \(pendingTotalWords), \(pendingStrataJSON))",
-                completionHandler: nil
-            )
+            AppState.debugLog("tryInit FIRING: uniqueWords=\(pendingUniqueWords), totalWords=\(pendingTotalWords)")
+            let js = "if(window.initTreeWords) window.initTreeWords(\(pendingWordDataJSON), \(pendingUniqueWords), \(pendingTotalWords), \(pendingStrataJSON))"
+            webView.evaluateJavaScript(js) { result, error in
+                if let error = error {
+                    AppState.debugLog("initTreeWords JS ERROR: \(error)")
+                } else {
+                    AppState.debugLog("initTreeWords JS OK")
+                }
+            }
         }
     }
 }

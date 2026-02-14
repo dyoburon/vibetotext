@@ -45,6 +45,11 @@ export function generateTree(scene, camera, controls, seed, uniqueWords, strata)
     leafStartPerLevel = [];
     maxTreeY = 0;
 
+    // Remove previous tree group if it exists (handles fallback → real data transition)
+    if (treeGroup && treeGroup.parent) {
+        treeGroup.parent.remove(treeGroup);
+    }
+
     // Create tree group positioned at the north pole of the planet
     treeGroup = new THREE.Group();
     treeGroup.position.set(0, PLANET_RADIUS, 0);

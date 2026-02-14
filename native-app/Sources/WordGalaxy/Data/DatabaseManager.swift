@@ -12,10 +12,11 @@ final class DatabaseManager {
 
     private func open() -> Bool {
         guard db == nil else { return true }
-        let flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX
+        // SQLITE_OPEN_READWRITE needed for WAL mode (requires -shm file access)
+        let flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_NOMUTEX
         let result = sqlite3_open_v2(dbPath, &db, flags, nil)
         if result != SQLITE_OK {
-            print("Failed to open database: \(String(cString: sqlite3_errmsg(db!)))")
+            AppState.debugLog("DB open failed: \(String(cString: sqlite3_errmsg(db!)))")
             db = nil
             return false
         }

@@ -196,30 +196,48 @@ enum VillageStateManager {
         var villagers: [VillagerState] = []
         var buildings: [BuildingState] = []
 
-        // Roles for initial 5 villagers
-        let initialRoles: [VillagerRole] = [.mayor, .guard_, .farmer, .builder, .blacksmith]
-        let buildingTypes: [BuildingType] = [.townhall, .barracks, .farm, .workshop, .cottage]
+        // Scale villager count with total words: 1 per 2500, min 5, max 50
+        let count = max(5, min(50, totalWords / 2500))
 
-        for i in 0..<5 {
-            let angle = Double(i) / 5.0 * .pi * 2.0
-            let radius = baseRadius + Double(i % 3) * 3.0
+        // First 5 get special roles
+        let specialRoles: [VillagerRole] = [.mayor, .guard_, .farmer, .builder, .blacksmith]
+        let specialBuildings: [BuildingType] = [.townhall, .barracks, .farm, .workshop, .cottage]
+
+        for i in 0..<count {
+            let angle = Double(i) * 2.399 // golden angle for even spread
+            let radius = baseRadius + Double(i % 5) * 3.0
             let bx = cos(angle) * radius
             let bz = sin(angle) * radius
 
+            let role: VillagerRole
+            let buildingType: BuildingType
+            if i < 5 {
+                role = specialRoles[i]
+                buildingType = specialBuildings[i]
+            } else {
+                role = nextRole(existingVillagers: villagers)
+                switch role {
+                case .farmer: buildingType = .farm
+                case .guard_: buildingType = .barracks
+                case .builder, .blacksmith: buildingType = .workshop
+                case .scholar, .mayor: buildingType = .cottage
+                }
+            }
+
             let building = BuildingState(
                 id: i,
-                type: buildingTypes[i],
+                type: buildingType,
                 owner: i + 1,
                 position: VillagePosition(x: bx, z: bz),
                 burned: false,
-                size: i == 0 ? 1.4 : 0.8 + Double(i % 3) * 0.3
+                size: i == 0 ? 1.4 : 0.8 + Double(i % 4) * 0.3
             )
             buildings.append(building)
 
             let villager = VillagerState(
                 id: i + 1,
                 name: VillageNameGenerator.name(forId: i + 1),
-                role: initialRoles[i],
+                role: role,
                 bornAt: now,
                 alive: true,
                 diedAt: nil,
@@ -233,7 +251,7 @@ enum VillageStateManager {
             version: 1,
             createdAt: now,
             totalWordsAtLastBirth: totalWords,
-            nextVillagerId: 6,
+            nextVillagerId: count + 1,
             villagers: villagers,
             buildings: buildings,
             graveyard: []

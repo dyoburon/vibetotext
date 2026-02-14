@@ -9,6 +9,19 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         DataContext = new MainViewModel();
+
+        // Set window/taskbar icon
+        var icon = App.GetWindowIcon();
+        if (icon != null)
+            Icon = icon;
+    }
+
+    protected override void OnStateChanged(EventArgs e)
+    {
+        // Minimize to tray instead of taskbar
+        if (WindowState == WindowState.Minimized)
+            Hide();
+        base.OnStateChanged(e);
     }
 
     protected override void OnClosing(System.ComponentModel.CancelEventArgs e)

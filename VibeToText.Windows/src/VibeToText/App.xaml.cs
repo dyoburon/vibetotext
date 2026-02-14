@@ -146,7 +146,7 @@ public partial class App : Application
             };
             _trayIcon.ForceCreate(false);
 
-            _trayIcon.TrayLeftMouseDown += (_, _) => ToggleMainWindow();
+            _trayIcon.TrayMouseDoubleClick += (_, _) => ToggleMainWindow();
             Log("Tray icon created and forced visible.");
         }
         catch (Exception ex)

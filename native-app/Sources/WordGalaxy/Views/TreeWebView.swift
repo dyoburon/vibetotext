@@ -14,6 +14,7 @@ struct TreeWebView: NSViewRepresentable {
     let population: Int
     let recentTrend: Float
     let villageStateJSON: String
+    let nebulaEntriesJSON: String
     let onVillagerKilled: (Int, String, String) -> Void
 
     func makeNSView(context: Context) -> WKWebView {
@@ -48,6 +49,7 @@ struct TreeWebView: NSViewRepresentable {
             coord.pendingUniqueWords = uniqueWords
             coord.pendingTotalWords = totalWords
             coord.pendingStrataJSON = strataJSON
+            coord.pendingNebulaEntriesJSON = nebulaEntriesJSON
             coord.tryInit()
         } else if !coord.introStarted {
             AppState.debugLog("updateNSView: waiting (wordDataJSON empty, pageReady=\(coord.pageReady))")
@@ -76,6 +78,7 @@ struct TreeWebView: NSViewRepresentable {
         var pendingUniqueWords: Int = 0
         var pendingTotalWords: Int = 0
         var pendingStrataJSON: String = "[]"
+        var pendingNebulaEntriesJSON: String = "[]"
         var currentMood: Float = 0.0
         var currentPopulation: Int = 0
         var currentTrend: Float = 0.0
@@ -121,7 +124,10 @@ struct TreeWebView: NSViewRepresentable {
             }
             introStarted = true
             AppState.debugLog("tryInit FIRING: uniqueWords=\(pendingUniqueWords), totalWords=\(pendingTotalWords)")
-            let js = "if(window.initTreeWords) window.initTreeWords(\(pendingWordDataJSON), \(pendingUniqueWords), \(pendingTotalWords), \(pendingStrataJSON))"
+            let js = """
+            if(window.initTreeWords) window.initTreeWords(\(pendingWordDataJSON), \(pendingUniqueWords), \(pendingTotalWords), \(pendingStrataJSON));
+            if(window.initNebula) window.initNebula(\(pendingNebulaEntriesJSON));
+            """
             webView.evaluateJavaScript(js) { result, error in
                 if let error = error {
                     AppState.debugLog("initTreeWords JS ERROR: \(error)")

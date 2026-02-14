@@ -128,6 +128,7 @@ struct TreeContainerView: View {
                 population: appState.treeData.population,
                 recentTrend: appState.treeData.recentTrend,
                 villageStateJSON: appState.villageStateJSON,
+                nebulaEntriesJSON: appState.nebulaEntriesJSON,
                 onVillagerKilled: { [weak appState] id, name, role in appState?.recordVillagerDeath(villagerId: id, name: name, role: role) }
             )
         }

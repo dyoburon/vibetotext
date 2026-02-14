@@ -8,6 +8,7 @@ import { initVillage, updateVillageMood as applyVillageMood, animateVillage, isI
 import { animateSkyEntity } from './sky-entity.js';
 import { initAttackController, updateAttackController, setAttackMood, skipAttackCinematic, isAttackActive } from './attack-controller.js';
 import { loadModel, normalizeModel, centerModel, preloadAllModels } from './model-loader.js';
+import { createNebula, animateNebula, isNebulaInitialized } from './nebula.js';
 import { preloadVillageModels } from './village.js';
 
 // ══════════════════════════════════════════
@@ -35,7 +36,7 @@ controls.dampingFactor = 0.05;
 controls.autoRotate = true;
 controls.autoRotateSpeed = 0.25;
 controls.target.set(0, PLANET_RADIUS * 0.3, 0);
-controls.minDistance = 10;
+controls.minDistance = 0;
 controls.maxDistance = 160;
 controls.maxPolarAngle = Math.PI;
 
@@ -272,6 +273,12 @@ window.updateVillageState = function(jsonStr) {
 
 window.hidePopup = hidePopup;
 
+window.initNebula = function(entries) {
+    if (!isNebulaInitialized() && entries && entries.length > 0) {
+        createNebula(scene, entries);
+    }
+};
+
 // Fallback: if no data arrives in 8 seconds, generate a default tree
 setTimeout(() => {
     if (getPhase() === 'waiting') {
@@ -363,6 +370,11 @@ function animate() {
     if (isVillageInitialized()) {
         animateVillage(dt, t);
         animateSkyEntity(t, getVillageMood(), camera.position);
+    }
+
+    // Nebula animates regardless of intro phase
+    if (isNebulaInitialized()) {
+        animateNebula(dt, t, camera.position);
     }
 
     renderer.render(scene, camera);

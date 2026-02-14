@@ -20,6 +20,9 @@ final class AppState: ObservableObject {
     @Published var treeWordDataJSON: String = "[]"
     @Published var treeStrataJSON: String = "[]"
 
+    // Nebula data (recent transcription texts)
+    @Published var nebulaEntriesJSON: String = "[]"
+
     // Village persistent state
     @Published var villageState: VillageState?
     @Published var villageStateJSON: String = "{}"
@@ -112,6 +115,13 @@ final class AppState: ObservableObject {
             let treeStrataJSON = (try? JSONSerialization.data(withJSONObject: strataArray))
                 .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
 
+            // Build nebula entries JSON (most recent 100 transcription texts)
+            let recentEntries = entries.prefix(100).map { entry -> [String: Any] in
+                ["text": entry.text, "mode": entry.mode]
+            }
+            let nebulaEntriesJSON = (try? JSONSerialization.data(withJSONObject: recentEntries))
+                .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
+
             let elapsed = Date().timeIntervalSince(reloadStart)
             AppState.debugLog("reload() done in \(String(format: "%.2f", elapsed))s — entries=\(entries.count), uniqueWords=\(frequencies.count), totalWords=\(totalWords), wordDataJSON len=\(treeWordDataJSON.count)")
             DispatchQueue.main.async {
@@ -127,6 +137,7 @@ final class AppState: ObservableObject {
                 self.treeStrataJSON = treeStrataJSON
                 self.villageState = updatedVillageState
                 self.villageStateJSON = villageJSON
+                self.nebulaEntriesJSON = nebulaEntriesJSON
                 self.isLoading = false
                 AppState.debugLog("main thread updated, treeWordDataJSON len=\(treeWordDataJSON.count)")
             }

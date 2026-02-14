@@ -10,7 +10,7 @@ from pathlib import Path
 
 import trimesh
 
-MODELS_DIR = Path(__file__).parent.parent / "Sources" / "WordGalaxy" / "Web" / "models"
+MODELS_DIR = Path(__file__).parent.parent / "Sources" / "DontAngerTheAI" / "Web" / "models"
 TARGET_RATIO = 0.80  # Keep 80% of faces
 MIN_FACES_TO_DECIMATE = 100  # Skip meshes already this low-poly
 

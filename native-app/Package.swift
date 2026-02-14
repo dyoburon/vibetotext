@@ -2,12 +2,12 @@
 import PackageDescription
 
 let package = Package(
-    name: "WordGalaxy",
+    name: "DontAngerTheAI",
     platforms: [.macOS(.v14)],
     targets: [
         .executableTarget(
-            name: "WordGalaxy",
-            path: "Sources/WordGalaxy",
+            name: "DontAngerTheAI",
+            path: "Sources/DontAngerTheAI",
             resources: [
                 .copy("Web"),
             ],

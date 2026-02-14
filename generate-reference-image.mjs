@@ -4,7 +4,7 @@ config();
 
 const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
 if (!GOOGLE_API_KEY) { console.error('Missing GOOGLE_API_KEY in .env'); process.exit(1); }
-const IMAGE_PATH = '/Users/dylan/Documents/Screenshots/screenshot_2026-02-14_00-30-08.png';
+const IMAGE_PATH = process.argv[2] || '/Users/dylan/Desktop/projects/vibetotext/cosmic-entity-reference.png';
 
 async function generateReferenceImage() {
     // Read the planet screenshot
@@ -36,16 +36,7 @@ async function generateReferenceImage() {
                                 }
                             },
                             {
-                                text: `Edit this image: Remove the black hole / glowing ring entity in the upper left.
-Replace it with a giant ethereal cosmic spirit creature — NOT human. Think Studio Ghibli forest spirit like the Forest Spirit from Princess Mononoke, or a Totoro-like cosmic guardian, or a No-Face-style mysterious robed entity.
-It should be a soft, rounded, non-humanoid creature shape — maybe like a large cloaked/robed spirit with no visible body underneath, just flowing cosmic robes and energy. Or a big gentle beast-like shape.
-It is curled tightly around the planet, cradling it closely and protectively with both arms/tendrils wrapped underneath and around the sphere — really holding it, not just sitting near it. The planet is nestled snugly against the creature's body like it's precious.
-Its left arm/tendril cradles the planet from below, reaching down low underneath it — supporting it from the bottom.
-One arm or tendril extends to the right.
-IMPORTANT: The head area should be a dark void / empty dark circle with the glowing purple ring around it like a halo — do NOT draw a face. Keep the ring from the original.
-The creature is made of translucent starlight and constellation patterns, glowing cool blue-white. Wearing flowing cosmic robes or cloaks that drape around it.
-Studio Ghibli art style — soft, painterly, magical, warm wonder.
-Keep the planet, village, and tree exactly as they are.`
+                                text: `Remove the planet (the green sphere with buildings/village on it) from this image. Keep the cosmic entity/creature exactly as it is — its body, arms, robes, head, everything stays the same. Just erase the planet and fill in what would be behind it (the creature's body/robes and space background). The creature should look like it's holding nothing — empty hands cradling empty space.`
                             }
                         ]
                     }],

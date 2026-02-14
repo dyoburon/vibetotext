@@ -21,7 +21,7 @@ HEADERS = {
     "Authorization": f"Bearer {API_KEY}",
 }
 
-OUTPUT_DIR = Path(__file__).parent.parent / "Sources" / "WordGalaxy" / "Web" / "models"
+OUTPUT_DIR = Path(__file__).parent.parent / "Sources" / "DontAngerTheAI" / "Web" / "models"
 
 POLL_INTERVAL = 5
 MAX_POLL_TIME = 180

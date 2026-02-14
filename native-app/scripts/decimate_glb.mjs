@@ -18,7 +18,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const MODELS_DIR = join(__dirname, '..', 'Sources', 'WordGalaxy', 'Web', 'models');
+const MODELS_DIR = join(__dirname, '..', 'Sources', 'DontAngerTheAI', 'Web', 'models');
 
 // Parse args
 const args = process.argv.slice(2);

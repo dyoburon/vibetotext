@@ -126,19 +126,40 @@ fragment float4 fragment_sphere(SphereVOut in [[stage_in]],
     float scanFreq = 4.0;
     float scanLines = pow(sin(screenY * scanFreq + t * 1.5) * 0.5 + 0.5, 8.0);
 
-    // Scrolling bright bar — sweeps up and down in screen space
-    float barCenter = sin(t * 0.8) * 0.4 + 0.5;  // 0..1 range
-    float barY = in.position.y / in.position.w;    // normalized
-    float bar = smoothstep(0.12, 0.0, abs(p.y - sin(t * 0.8) * 0.9));
-    bar *= (1.0 + amp * 1.5);
+    // Smooth sphere Y — renormalize to undo linear triangle interpolation
+    float sphereY = normalize(p).y;
+
+    // Sweeping bar — moves up/down when idle, converges to equator when speaking
+    float barSweep = sin(t * 0.8) * 0.9;
+    float barCenter = mix(barSweep, -0.15, smoothstep(0.0, 0.3, amp));
+
+    // 3 lines — all overlap at barCenter when idle, spread apart with voice
+    float lineThick = 0.025;
+    float lineGlow  = 0.06;
+    float spread = amp * 0.35;
+
+    float positions[3] = {
+        barCenter,               // center line
+        barCenter + spread,      // upper line
+        barCenter - spread       // lower line
+    };
+
+    float lines = 0.0;
+    for (int i = 0; i < 3; i++) {
+        float d = abs(sphereY - positions[i]);
+        lines += smoothstep(lineThick, 0.0, d);
+        lines += smoothstep(lineGlow, lineThick, d) * 0.25;
+    }
+    lines = min(lines, 1.5);
+    lines *= (1.0 + amp * 1.0);
 
     // Flicker — screen-space for smoothness
     float flicker = 1.0 - amp * 0.3 * sin(t * 17.0 + screenY * 0.5);
 
-    // Combine: rim + scan lines + bar
+    // Combine: rim + scan lines + equator lines
     float intensity = fresnel * 0.6
-                    + scanLines * 0.25
-                    + bar * 0.5
+                    + scanLines * 0.15
+                    + lines * 0.5
                     + 0.04;  // base fill
     intensity *= flicker;
 

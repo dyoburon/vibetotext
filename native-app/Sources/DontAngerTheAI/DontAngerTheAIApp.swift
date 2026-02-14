@@ -2,7 +2,7 @@ import SwiftUI
 import AppKit
 
 @main
-struct WordGalaxyApp: App {
+struct DontAngerTheAIApp: App {
     @StateObject private var appState = AppState()
 
     init() {

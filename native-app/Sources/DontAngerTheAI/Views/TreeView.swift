@@ -70,7 +70,7 @@ struct TreeContainerView: View {
         VStack(spacing: 0) {
             HStack(spacing: 16) {
                 VStack(spacing: 2) {
-                    Text("Frequency Tree")
+                    Text("Don't Anger the AI")
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundColor(.white)
                     Text(appState.isLoading ? "Loading..." : "\(appState.totalSessions) sessions")
@@ -107,7 +107,7 @@ struct TreeContainerView: View {
                     )
                     TreeStatItem(
                         label: "Pop.",
-                        value: "\(appState.treeData.population)",
+                        value: "\(appState.villageState?.villagers.filter(\.alive).count ?? 0)",
                         color: .white
                     )
                 }
@@ -127,7 +127,7 @@ struct TreeContainerView: View {
                 totalWords: appState.totalWords,
                 strataJSON: appState.treeStrataJSON,
                 mood: appState.treeData.mood,
-                population: appState.treeData.population,
+                population: appState.villageState?.villagers.filter(\.alive).count ?? 0,
                 recentTrend: appState.treeData.recentTrend,
                 villageStateJSON: appState.villageStateJSON,
                 nebulaEntriesJSON: appState.nebulaEntriesJSON,

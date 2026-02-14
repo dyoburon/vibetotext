@@ -4,6 +4,7 @@ import { createSkyEntity, updateSkyFace } from './sky-entity.js';
 import { loadModel, normalizeModel } from './model-loader.js';
 
 // ── Village state ──
+let cosmicEntityRef = null;
 let villageMood = 0.0;
 let villagePopulation = 0;
 let villageTrend = 0.0;
@@ -491,6 +492,131 @@ export async function initVillage(scene, totalWords, startHidden) {
     allVillagersCreated = true;
 
     createSkyEntity(scene);
+
+    // Load cosmic entity 3D model behind the planet
+    loadModel('cosmic-entity.glb').then(model => {
+        if (model) {
+            const box = new THREE.Box3().setFromObject(model);
+            const size = new THREE.Vector3();
+            box.getSize(size);
+            const center = new THREE.Vector3();
+            box.getCenter(center);
+            console.log('Cosmic entity size:', size.x.toFixed(1), size.y.toFixed(1), size.z.toFixed(1), 'center:', center.x.toFixed(1), center.y.toFixed(1), center.z.toFixed(1));
+
+            // Scale so entity is large behind the planet
+            const targetHeight = 220;
+            const s = targetHeight / Math.max(size.x, size.y, size.z);
+            model.scale.set(s, s, s);
+
+            // Position: move down and back so the face hole aligns with the black hole ring
+            // Black hole is at (0, 70, -60)
+            model.position.set(0, 0, -40);
+
+            // Cosmic starfield shader
+            const cosmicVert = /* glsl */`
+                varying vec3 vWorldPos;
+                varying vec3 vNormal;
+                void main() {
+                    vec4 wp = modelMatrix * vec4(position, 1.0);
+                    vWorldPos = wp.xyz;
+                    vNormal = normalize(normalMatrix * normal);
+                    gl_Position = projectionMatrix * viewMatrix * wp;
+                }
+            `;
+
+            const cosmicFrag = /* glsl */`
+                uniform float uTime;
+                varying vec3 vWorldPos;
+                varying vec3 vNormal;
+
+                float hash(vec3 p) {
+                    p = fract(p * vec3(443.9, 397.3, 491.2));
+                    p += dot(p, p.yxz + 19.19);
+                    return fract((p.x + p.y) * p.z);
+                }
+
+                // Stars with subtle swirl around Y axis
+                float starLayer(vec3 p, float scale) {
+                    float angle = uTime * 0.08;
+                    float ca = cos(angle);
+                    float sa = sin(angle);
+                    p = vec3(p.x * ca - p.z * sa, p.y, p.x * sa + p.z * ca);
+                    p *= scale;
+                    vec3 id = floor(p);
+                    vec3 f = fract(p);
+                    float minD = 1.0;
+                    for (int x = -1; x <= 1; x++)
+                    for (int y = -1; y <= 1; y++)
+                    for (int z = -1; z <= 1; z++) {
+                        vec3 off = vec3(float(x), float(y), float(z));
+                        vec3 n = id + off;
+                        vec3 r = vec3(hash(n), hash(n + 71.0), hash(n + 137.0));
+                        float d = length(f - off - r);
+                        minD = min(minD, d);
+                    }
+                    return smoothstep(0.1, 0.0, minD);
+                }
+
+                void main() {
+                    float s = starLayer(vWorldPos, 0.3);
+
+                    // Oscillating energy wave — sine wave mapped to Y position on body
+                    // Creates a line that sweeps up/down with waveform wobble
+                    float waveCenter = sin(uTime * 0.5) * 40.0;
+                    float waveShape = sin(vWorldPos.x * 0.2 + uTime * 2.0) * 3.0
+                                    + sin(vWorldPos.z * 0.3 + uTime * 1.5) * 2.0;
+                    float waveDist = abs(vWorldPos.y - waveCenter - waveShape);
+                    float wave1 = smoothstep(2.5, 0.0, waveDist);
+
+                    // Second wave splits off
+                    float wave2center = waveCenter + 8.0 + sin(uTime * 0.7) * 5.0;
+                    float wave2shape = sin(vWorldPos.x * 0.25 + uTime * 2.5) * 2.0;
+                    float wave2 = smoothstep(1.5, 0.0, abs(vWorldPos.y - wave2center - wave2shape)) * 0.6;
+
+                    // Third wave splits the other way
+                    float wave3center = waveCenter - 8.0 - sin(uTime * 0.6) * 5.0;
+                    float wave3shape = sin(vWorldPos.z * 0.2 + uTime * 1.8) * 2.0;
+                    float wave3 = smoothstep(1.5, 0.0, abs(vWorldPos.y - wave3center - wave3shape)) * 0.6;
+
+                    // Blue palette
+                    vec3 starCol = vec3(0.4, 0.6, 1.0);
+                    vec3 waveCol = vec3(0.3, 0.7, 1.0);
+                    vec3 wave2Col = vec3(0.5, 0.4, 1.0);
+                    vec3 wave3Col = vec3(0.2, 0.5, 0.9);
+
+                    vec3 color = starCol * s;
+                    color += waveCol * wave1;
+                    color += wave2Col * wave2;
+                    color += wave3Col * wave3;
+
+                    float alpha = s * 0.9 + wave1 * 0.7 + wave2 * 0.5 + wave3 * 0.5;
+                    alpha = clamp(alpha, 0.0, 1.0);
+
+                    gl_FragColor = vec4(color, alpha);
+                }
+            `;
+
+            const cosmicMaterial = new THREE.ShaderMaterial({
+                uniforms: { uTime: { value: 0 } },
+                vertexShader: cosmicVert,
+                fragmentShader: cosmicFrag,
+                transparent: true,
+                depthWrite: false,
+                side: THREE.DoubleSide,
+            });
+            model.userData.cosmicMaterial = cosmicMaterial;
+
+            model.traverse(child => {
+                if (child.isMesh) {
+                    child.material = cosmicMaterial;
+                }
+            });
+            scene.add(model);
+            cosmicEntityRef = model;
+            console.log('Cosmic entity loaded — scale:', s.toFixed(1), 'pos:', model.position.toArray().map(v=>v.toFixed(1)), 'worldSize:', (size.y*s).toFixed(0));
+        }
+    });
+
     villageInitialized = true;
 
     if (startHidden) {
@@ -818,6 +944,11 @@ function _updateCropColors(mood) {
 
 // ── Per-frame animation ──
 export function animateVillage(dt, t) {
+    // Update cosmic entity shader time
+    if (cosmicEntityRef?.userData.cosmicMaterial) {
+        cosmicEntityRef.userData.cosmicMaterial.uniforms.uTime.value = t;
+    }
+
     const scaledDt = dt * villageTimeScale;
     const scaledT = t * villageTimeScale;
 
@@ -924,8 +1055,9 @@ function _animateVillager(v, scaledDt, scaledT) {
         return;
     }
 
-    // Compute target position on sphere
-    const target = spherePosition(v.userData.targetTheta, v.userData.targetPhi, PLANET_RADIUS);
+    // Compute target position on sphere (at the same radius villagers live at)
+    const villagerR = PLANET_RADIUS * 0.95;
+    const target = spherePosition(v.userData.targetTheta, v.userData.targetPhi, villagerR);
     const dist = v.position.distanceTo(target);
 
     if (dist < 0.4) {
@@ -937,14 +1069,14 @@ function _animateVillager(v, scaledDt, scaledT) {
         }
     } else {
         const step = v.userData.speed * scaledDt;
-        const newPos = moveOnSphere(v.position, target, step, PLANET_RADIUS);
+        const newPos = moveOnSphere(v.position, target, step, villagerR);
         v.position.copy(newPos);
-        orientOnSphere(v, PLANET_RADIUS);
+        orientOnSphere(v, villagerR);
     }
 
     // Bob along surface normal
     const dir = v.position.clone().normalize();
-    v.position.copy(dir).multiplyScalar(PLANET_RADIUS * 0.95);
+    v.position.copy(dir).multiplyScalar(villagerR);
     const bob = Math.abs(Math.sin(scaledT * 6 * v.userData.speed + v.userData.phaseOffset)) * 0.025;
     v.position.addScaledVector(dir, bob);
 }

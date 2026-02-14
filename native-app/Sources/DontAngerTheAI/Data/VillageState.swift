@@ -196,8 +196,8 @@ enum VillageStateManager {
         var villagers: [VillagerState] = []
         var buildings: [BuildingState] = []
 
-        // Scale villager count with total words: 1 per 2500, min 5, max 50
-        let count = max(5, min(50, totalWords / 2500))
+        // Scale villager count with total words: 1 per 2500, min 5, max 5000
+        let count = max(5, min(5000, totalWords / 2500))
 
         // First 5 get special roles
         let specialRoles: [VillagerRole] = [.mayor, .guard_, .farmer, .builder, .blacksmith]

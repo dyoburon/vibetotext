@@ -183,7 +183,7 @@ final class AppState: ObservableObject {
         var changed = false
 
         // ── Catch-up: ensure village has enough villagers for word count ──
-        let expectedCount = max(5, min(50, totalWords / 2500))
+        let expectedCount = max(5, min(5000, totalWords / 2500))
         let currentCount = state.villagers.count
         if expectedCount > currentCount {
             let buildingCount = state.buildings.count
@@ -226,8 +226,8 @@ final class AppState: ObservableObject {
 
         // ── Incremental births: 1 new villager per 2500 new words ──
         let newWords = totalWords - state.totalWordsAtLastBirth
-        if newWords >= 2500 && state.villagers.count < 50 {
-            let births = min(newWords / 2500, 50 - state.villagers.count)
+        if newWords >= 2500 && state.villagers.count < 5000 {
+            let births = min(newWords / 2500, 5000 - state.villagers.count)
             let buildingCount = state.buildings.count
             let baseRadius = 12.0 + sqrt(Double(buildingCount)) * 2.0
 

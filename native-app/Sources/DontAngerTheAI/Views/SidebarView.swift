@@ -11,7 +11,7 @@ struct SidebarView: View {
                     Label("Word Galaxy", systemImage: "sparkles")
                 }
                 NavigationLink(value: NavDestination.tree) {
-                    Label("Frequency Tree", systemImage: "leaf")
+                    Label("Don't Anger the AI", systemImage: "bolt.trianglebadge.exclamationmark")
                 }
                 NavigationLink(value: NavDestination.shaderPreview) {
                     Label("Shader Preview", systemImage: "circle.hexagongrid")

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mulberry32, PLANET_RADIUS, placeOnSphere, flatToSpherical, moveOnSphere, spherePosition, orientOnSphere } from './utils.js';
 import { createSkyEntity, updateSkyFace } from './sky-entity.js';
+import { loadModel, normalizeModel } from './model-loader.js';
 
 // ── Village state ──
 let villageMood = 0.0;
@@ -25,6 +26,23 @@ const gravestoneObjects = new Map(); // villagerId → THREE.Group
 let persistentStateActive = false;
 let lastVillageState = null;
 
+// ── GLB model pools ──
+const houseModels = [];   // loaded THREE.Groups (templates)
+const villagerModels = []; // loaded THREE.Groups (templates)
+
+const ROLE_TO_VARIANT = {
+    farmer: 0, blacksmith: 1, scholar: 2, guard_: 3, guard: 3, builder: 4, mayor: 2,
+};
+
+export async function preloadVillageModels() {
+    const houseFiles = ['house_01.glb', 'house_02.glb', 'house_03.glb', 'house_04.glb'];
+    const villagerFiles = ['villager_01.glb', 'villager_02.glb', 'villager_03.glb', 'villager_04.glb', 'villager_05.glb'];
+    await Promise.allSettled([
+        ...houseFiles.map(async f => { const m = await loadModel(f); if (m) houseModels.push(m); }),
+        ...villagerFiles.map(async f => { const m = await loadModel(f); if (m) villagerModels.push(m); }),
+    ]);
+}
+
 export function isInitialized() { return villageInitialized; }
 export function getVillageMood() { return villageMood; }
 export function setVillageTimeScale(s) { villageTimeScale = s; }
@@ -36,8 +54,43 @@ function _flatRadiusToPhi(radius, maxFlatR) {
     return Math.min((radius / maxFlatR) * MAX_PHI, Math.PI * 0.8);
 }
 
+// ── GLB building constructor ──
+function createBuildingFromGLB(glbModel, size, rng) {
+    const group = new THREE.Group();
+    const targetH = 4.0 + rng() * size * 2.8;
+    normalizeModel(glbModel, targetH);
+    group.add(glbModel);
+
+    const box = new THREE.Box3().setFromObject(glbModel);
+    const bSize = new THREE.Vector3();
+    box.getSize(bSize);
+
+    let bodyMat = null;
+    glbModel.traverse(child => {
+        if (child.isMesh && child.material) {
+            child.material = child.material.clone();
+            if (!bodyMat) bodyMat = child.material;
+        }
+    });
+
+    group.userData = {
+        onFire: false, fireParticles: null, bodyMat,
+        w: bSize.x, h: bSize.y, d: bSize.z,
+        collapsing: false, collapseProgress: 0,
+        roofOrigY: bSize.y * 0.7, bodyOrigY: bSize.y * 0.5,
+        isGLB: true,
+    };
+    return group;
+}
+
 // ── Building creation (local space only, caller places on sphere) ──
 function createBuilding(size, rng) {
+    if (houseModels.length > 0) {
+        const idx = Math.floor(rng() * houseModels.length) % houseModels.length;
+        const clone = houseModels[idx].clone();
+        clone.traverse(c => { if (c.isMesh && c.material) c.material = c.material.clone(); });
+        return createBuildingFromGLB(clone, size, rng);
+    }
     const group = new THREE.Group();
     const w = 3.0 + rng() * size * 2.4;
     const h = 4.0 + rng() * size * 2.8;
@@ -123,8 +176,35 @@ function createFireParticles(building) {
     return { geo, mat, particles, basePositions: positions.slice() };
 }
 
+// ── GLB villager constructor ──
+function createVillagerFromGLB(glbModel, rng) {
+    const group = new THREE.Group();
+    normalizeModel(glbModel, 2.4);
+    group.add(glbModel);
+
+    group.userData = {
+        targetTheta: rng() * Math.PI * 2,
+        targetPhi: 0.15 + rng() * 1.0,
+        speed: 0.3 + rng() * 0.4,
+        alive: true, fallen: false, fallProgress: 0,
+        waitTimer: 0,
+        phaseOffset: rng() * Math.PI * 2,
+        villagerId: null, name: null, role: null,
+        isGLB: true,
+    };
+    return group;
+}
+
 // ── Villager creation (local space only, caller places on sphere) ──
-function createVillager(rng) {
+function createVillager(rng, role) {
+    if (villagerModels.length > 0) {
+        const idx = (role && ROLE_TO_VARIANT[role] != null)
+            ? ROLE_TO_VARIANT[role] % villagerModels.length
+            : Math.floor(rng() * villagerModels.length);
+        const clone = villagerModels[idx].clone();
+        clone.traverse(c => { if (c.isMesh && c.material) c.material = c.material.clone(); });
+        return createVillagerFromGLB(clone, rng);
+    }
     const group = new THREE.Group();
     const hue = 0.05 + rng() * 0.12;
     const shirtColor = new THREE.Color().setHSL(rng() * 0.9, 0.5, 0.4 + rng() * 0.2);
@@ -511,7 +591,7 @@ export function updateVillageState(scene, stateData) {
     for (const vState of stateData.villagers) {
         if (!villagerObjects.has(vState.id)) {
             const rng = mulberry32(vState.id * 2654 + 99);
-            const v = createVillager(rng);
+            const v = createVillager(rng, vState.role);
             const { theta, phi } = flatToSpherical(vState.position.x, vState.position.z, maxFlatR);
             placeOnSphere(v, theta, phi, PLANET_RADIUS);
             v.userData.villagerId = vState.id;
@@ -775,20 +855,27 @@ export function animateVillage(dt, t) {
         if (b.userData.collapsing && b.userData.collapseProgress < 1) {
             b.userData.collapseProgress = Math.min(b.userData.collapseProgress + dt * 0.7, 1);
             const p = b.userData.collapseProgress;
-            const ease = p * p; // accelerate into ground
+            const ease = p * p;
             const h = b.userData.h;
 
+            if (b.userData.isGLB) {
+                // GLB buildings: whole-model sink + lean
+                const glbChild = b.children[0];
+                if (glbChild) {
+                    glbChild.position.y = -ease * h * 0.4;
+                    glbChild.scale.y = 1 - ease * 0.5;
+                    glbChild.rotation.z = ease * 0.3;
+                }
+            } else {
             b.traverse(child => {
                 if (!child.isMesh) return;
                 const part = child.userData.part;
                 if (part === 'roof') {
-                    // Roof slides off to the side and tumbles
                     child.position.y = b.userData.roofOrigY - ease * h * 0.8;
                     child.position.x = ease * h * 0.6;
                     child.rotation.z = ease * 1.2;
                     child.rotation.x = ease * 0.5;
                 } else if (part === 'body') {
-                    // Walls sink and lean
                     child.position.y = b.userData.bodyOrigY - ease * h * 0.3;
                     child.scale.y = 1 - ease * 0.6;
                     child.rotation.z = ease * 0.15;
@@ -799,9 +886,8 @@ export function animateVillage(dt, t) {
                 }
                 // Windows just disappear with the walls
             });
+            } // end else (procedural)
 
-            // Overall building sinks toward surface
-            // Slight random wobble during collapse
             if (p < 0.8) {
                 const wobble = Math.sin(t * 12 + b.position.x * 3) * (1 - p) * 0.02;
                 b.rotation.x += wobble;

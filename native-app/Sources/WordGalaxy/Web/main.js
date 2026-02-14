@@ -7,6 +7,8 @@ import { getPhase, startRainGrowth, skipToDone, updateRainGrowthPhase, updateBri
 import { initVillage, updateVillageMood as applyVillageMood, animateVillage, isInitialized as isVillageInitialized, getVillageMood, setVillageGrowthProgress, setVillageTimeScale, updateVillageState as applyVillageState } from './village.js';
 import { animateSkyEntity } from './sky-entity.js';
 import { initAttackController, updateAttackController, setAttackMood, skipAttackCinematic, isAttackActive } from './attack-controller.js';
+import { loadModel, normalizeModel, centerModel, preloadAllModels } from './model-loader.js';
+import { preloadVillageModels } from './village.js';
 
 // ══════════════════════════════════════════
 // ── SCENE SETUP ──
@@ -112,13 +114,29 @@ scene.add(rimLight);
 // ── Growth clip plane ──
 const growthClip = new THREE.Plane(new THREE.Vector3(0, -1, 0), PLANET_RADIUS);
 
-// ── Planet sphere ──
+// ── Planet sphere (procedural fallback, may be replaced by GLB) ──
 const planetGeo = new THREE.SphereGeometry(PLANET_RADIUS, 64, 48);
 const planetMat = new THREE.MeshStandardMaterial({
     color: 0x2a5a1a, roughness: 0.9, metalness: 0.0
 });
 const planet = new THREE.Mesh(planetGeo, planetMat);
 scene.add(planet);
+
+// Async: try to replace planet with GLB model
+(async () => {
+    const glb = await loadModel('planet.glb');
+    if (glb) {
+        normalizeModel(glb, PLANET_RADIUS * 2);
+        centerModel(glb);
+        scene.remove(planet);
+        scene.add(glb);
+        planetGeo.dispose();
+        planetMat.dispose();
+    }
+})();
+
+// Preload village GLB models (fire-and-forget)
+preloadVillageModels();
 
 // ── Fireflies (spherical distribution around planet) ──
 const fireflyRng = mulberry32(777);

@@ -56,6 +56,7 @@ struct Uniforms {
     float amplitude;
     float noiseSeedX;
     float noiseSeedY;
+    float rotationY;
 };
 
 // ── Sphere vertex/fragment ──
@@ -70,6 +71,7 @@ struct SphereVOut {
     float3 bary;
     float  ndotv;
     float3 worldPos;
+    float  modelY;
 };
 
 vertex SphereVOut vertex_sphere(SphereVIn in [[stage_in]],
@@ -102,11 +104,19 @@ vertex SphereVOut vertex_sphere(SphereVIn in [[stage_in]],
     float3 new_normal = normalize(disp);
     float3 viewDir = normalize(float3(0, 0, 1));
 
+    // Model-space Y: apply rotateY then rotateX(0.4) to get view-aligned latitude
+    float3 n = normalize(disp);
+    float cosY = cos(u.rotationY), sinY = sin(u.rotationY);
+    float rotZ = -n.x * sinY + n.z * cosY;  // Z after Y rotation
+    float cosX = cos(0.4), sinX = sin(0.4);
+    float mY = n.y * cosX - rotZ * sinX;    // Y after X tilt
+
     SphereVOut out;
     out.position = u.mvp * float4(disp, 1.0);
     out.bary = in.bary;
     out.worldPos = disp / scale;
     out.ndotv = abs(dot(new_normal, viewDir));
+    out.modelY = mY;
     return out;
 }
 
@@ -129,8 +139,8 @@ fragment float4 fragment_sphere(SphereVOut in [[stage_in]],
     float scanFreq = 4.0;
     float scanLines = pow(sin(screenY * scanFreq + t * 1.5) * 0.5 + 0.5, 8.0);
 
-    // Smooth sphere Y — renormalize to undo linear triangle interpolation
-    float sphereY = normalize(p).y;
+    // Use model-space Y for consistent latitude lines across entire sphere
+    float sphereY = in.modelY;
 
     // Sweeping bar — moves up/down when idle, converges to equator when speaking
     float barSweep = sin(t * 0.8) * 0.9;
@@ -163,7 +173,7 @@ fragment float4 fragment_sphere(SphereVOut in [[stage_in]],
     float baseIntensity = fresnel * 0.324
                         + scanLines * 0.081
                         + 0.024;  // base fill
-    float lineIntensity = lines * 0.45;
+    float lineIntensity = lines * 0.315;
     float intensity = (baseIntensity + lineIntensity) * flicker;
 
     // Color: gradient across sphere — blue to pink, 10% dimmer

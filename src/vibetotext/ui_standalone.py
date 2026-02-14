@@ -254,8 +254,8 @@ class MetalRenderer:
         model = mat4_mul(mat4_rotate_x(0.4), mat4_rotate_y(self.rotation))
         mvp = mat4_mul(proj, mat4_mul(view, model))
 
-        # Pack uniforms: 16 floats (mvp) + time + amplitude + 2 seed
-        uniform_data = struct.pack('16f4f', *mvp, t, amp, self.noise_seed_x, self.noise_seed_y)
+        # Pack uniforms: 16 floats (mvp) + time + amplitude + 2 seed + rotationY
+        uniform_data = struct.pack('16f5f', *mvp, t, amp, self.noise_seed_x, self.noise_seed_y, self.rotation)
         self.uniform_buf = self.device.newBufferWithBytes_length_options_(
             uniform_data, len(uniform_data), 0
         )

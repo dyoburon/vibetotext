@@ -54,7 +54,12 @@ async function _doPreloadModels() {
 
 export function isInitialized() { return villageInitialized; }
 export function getVillageMood() { return villageMood; }
-export function getVillageCounts() { return { buildings: villageBuildings.length, villagers: villageVillagers.length }; }
+export function getVillageCounts() {
+    return {
+        buildings: villageBuildings.length,
+        villagers: villageVillagers.filter(v => v.userData.alive !== false).length,
+    };
+}
 export function setVillageTimeScale(s) { villageTimeScale = s; }
 
 // ── Convert flat radius to polar angle ──
@@ -448,24 +453,76 @@ function _generateCropLayout(rng, buildings, cropCount) {
     return placed;
 }
 
-// ── Village initialization ──
-let villageInitStarted = false;
-export async function initVillage(scene, totalWords, startHidden) {
-    currentTotalWords = totalWords || currentTotalWords;
-    if (villageInitStarted) return;
-    villageInitStarted = true;
+// ── Initialize from persistent state ──
+function _initFromState(scene, stateData, startHidden) {
+    const maxFlatR = _computeMaxFlatR(stateData);
 
-    // Wait for GLB models to load before creating buildings/villagers
-    await preloadVillageModels();
+    // Create buildings from state
+    for (const bState of stateData.buildings) {
+        const rng = mulberry32(bState.id * 1337 + 42);
+        const b = createBuilding(bState.size, rng);
+        const { theta, phi } = flatToSpherical(bState.position.x, bState.position.z, maxFlatR);
+        placeOnSphere(b, theta, phi, PLANET_RADIUS * 0.95);
+        b.rotateY((rng() - 0.5) * 0.3);
+        if (startHidden) b.visible = false;
+        scene.add(b);
+        buildingObjects.set(bState.id, b);
+        villageBuildings.push(b);
 
+        if (bState.burned) {
+            b.userData.onFire = true;
+            b.userData.fireParticles = createFireParticles(b);
+        }
+    }
+
+    // Create villagers from state
+    for (const vState of stateData.villagers) {
+        const rng = mulberry32(vState.id * 2654 + 99);
+        const v = createVillager(rng, vState.role);
+        const { theta, phi } = flatToSpherical(vState.position.x, vState.position.z, maxFlatR);
+        placeOnSphere(v, theta, phi, PLANET_RADIUS * 0.95);
+        v.userData.villagerId = vState.id;
+        v.userData.name = vState.name;
+        v.userData.role = vState.role;
+        v.userData.targetTheta = theta + (rng() - 0.5) * 0.3;
+        v.userData.targetPhi = Math.max(0.05, phi + (rng() - 0.5) * 0.3);
+        if (!vState.alive) {
+            v.visible = false;
+            v.userData.alive = false;
+        } else if (startHidden) {
+            v.visible = false;
+        }
+        scene.add(v);
+        villagerObjects.set(vState.id, v);
+        villageVillagers.push(v);
+    }
+
+    // Create gravestones from state
+    if (stateData.graveyard) {
+        for (const grave of stateData.graveyard) {
+            if (!gravestoneObjects.has(grave.villagerId)) {
+                const gs = createGravestone(grave.name, grave.role);
+                const { theta, phi } = flatToSpherical(grave.position.x, grave.position.z, maxFlatR);
+                placeOnSphere(gs, theta, phi, PLANET_RADIUS * 0.95);
+                if (startHidden) gs.visible = false;
+                scene.add(gs);
+                gravestoneObjects.set(grave.villagerId, gs);
+            }
+        }
+    }
+
+    persistentStateActive = true;
+    lastVillageState = stateData;
+    allVillagersCreated = true;
+}
+
+// ── Initialize procedurally (fallback for new users) ──
+function _initProcedural(scene, startHidden) {
     const rng = villageRng;
-
     const buildingCount = Math.max(5, Math.min(100, 5 + Math.floor(Math.log2(Math.max(1, currentTotalWords / 50)) * 4)));
 
-    // Generate organic layout in flat space
     const layout = _generateVillageLayout(rng, buildingCount);
 
-    // Compute maxFlatR from actual placed positions
     let maxFlatR = 20;
     for (const b of layout) {
         const r = Math.sqrt(b.x * b.x + b.z * b.z);
@@ -473,23 +530,36 @@ export async function initVillage(scene, totalWords, startHidden) {
     }
     maxFlatR += 10;
 
-    // Place buildings on sphere
     for (const b of layout) {
         const { theta, phi } = flatToSpherical(b.x, b.z, maxFlatR);
         const building = createBuilding(b.size, mulberry32(Math.floor(b.x * 100 + b.z * 77)));
         placeOnSphere(building, theta, phi, PLANET_RADIUS * 0.95);
-        building.rotateY(rng() * Math.PI * 2); // random facing
+        building.rotateY(rng() * Math.PI * 2);
         if (startHidden) building.visible = false;
         scene.add(building);
         villageBuildings.push(building);
     }
 
-    // Crops disabled — using GLB models only
-    // (crop code kept for potential future use)
-
     const maxVillagers = Math.max(5, Math.min(60, Math.floor(buildingCount * 0.8)));
     _spawnVillagers(scene, maxVillagers, startHidden, maxFlatR);
     allVillagersCreated = true;
+}
+
+// ── Village initialization ──
+let villageInitStarted = false;
+export async function initVillage(scene, totalWords, startHidden, stateData) {
+    currentTotalWords = totalWords || currentTotalWords;
+    if (villageInitStarted) return;
+    villageInitStarted = true;
+
+    // Wait for GLB models to load before creating buildings/villagers
+    await preloadVillageModels();
+
+    if (stateData && stateData.villagers && stateData.buildings) {
+        _initFromState(scene, stateData, startHidden);
+    } else {
+        _initProcedural(scene, startHidden);
+    }
 
     createSkyEntity(scene);
 
@@ -595,10 +665,16 @@ export async function initVillage(scene, totalWords, startHidden) {
                     waveColor += blueCol * w4;
                     waveColor += purpleCol * w5;
 
-                    vec3 color = vec3(0.6, 0.85, 1.0) * s * 1.5 + waveColor;
-                    float alpha = s * 1.4 + waves * 0.7;
-                    alpha = clamp(alpha, 0.0, 1.0);
+                    // Fresnel edge test with NaN guard
+                    vec3 V = normalize(cameraPosition - vWorldPos);
+                    float nLen = length(vNormal);
+                    vec3 N = nLen > 0.001 ? vNormal / nLen : vec3(0.0, 0.0, 1.0);
+                    float edge = pow(1.0 - abs(dot(N, V)), 2.0);
 
+                    vec3 color = vec3(0.6, 0.85, 1.0) * s * 1.5 + waveColor;
+                    color += vec3(1.0, 0.0, 0.0) * edge;
+                    float alpha = s * 1.4 + waves * 0.7 + edge;
+                    alpha = clamp(alpha, 0.0, 1.0);
                     gl_FragColor = vec4(color, alpha);
                 }
             `;
@@ -613,13 +689,39 @@ export async function initVillage(scene, totalWords, startHidden) {
             });
             model.userData.cosmicMaterial = cosmicMaterial;
 
+            // Outline: inverted hull method — inflated backfaces in black
+            const outlineVert = /* glsl */`
+                void main() {
+                    // Push vertices out along normal (thin outline in local space)
+                    vec3 pos = position + normal * 0.006;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+                }
+            `;
+            const outlineFrag = /* glsl */`
+                void main() {
+                    gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+                }
+            `;
+            const outlineMat = new THREE.ShaderMaterial({
+                vertexShader: outlineVert,
+                fragmentShader: outlineFrag,
+                side: THREE.BackSide,
+            });
+
             model.traverse(child => {
                 if (child.isMesh) {
                     child.material = cosmicMaterial;
+                    // Add outline mesh as sibling
+                    const outlineMesh = new THREE.Mesh(child.geometry, outlineMat);
+                    outlineMesh.renderOrder = -1;
+                    child.parent.add(outlineMesh);
                 }
             });
             scene.add(model);
             cosmicEntityRef = model;
+
+            // Check shader compilation using Three.js's actual compiled program
+            console.log('Cosmic shader applied — fresnel edge test active');
             console.log('Cosmic entity loaded — scale:', s.toFixed(1), 'pos:', model.position.toArray().map(v=>v.toFixed(1)), 'worldSize:', (size.y*s).toFixed(0));
         }
     });
@@ -649,11 +751,17 @@ export function setVillageGrowthProgress(p) {
         const threshold = 0.05 + (i / villageVillagers.length) * 0.85;
         const v = villageVillagers[i];
         const shouldShow = villageGrowthProgress >= threshold;
-        v.visible = shouldShow;
-        if (shouldShow) {
-            v.userData.alive = true;
+        v.visible = shouldShow && v.userData.alive !== false;
+        if (shouldShow && v.userData.alive !== false) {
             v.userData.fallen = false;
         }
+    }
+
+    // Reveal gravestones alongside buildings
+    const gravestones = [...gravestoneObjects.values()];
+    for (let i = 0; i < gravestones.length; i++) {
+        const threshold = 0.02 + (i / Math.max(gravestones.length, 1)) * 0.88;
+        gravestones[i].visible = villageGrowthProgress >= threshold;
     }
 }
 
@@ -964,15 +1072,18 @@ export function animateVillage(dt, t) {
         _animateVillager(v, scaledDt, scaledT);
     }
 
-    // Animate procedural villagers (intro/fallback)
-    for (const v of villageVillagers) {
-        if (!v.visible) continue;
-        _animateVillager(v, scaledDt, scaledT);
+    // Animate procedural villagers only if not using persistent state
+    // (when persistent, the same objects are already in villagerObjects)
+    if (!persistentStateActive) {
+        for (const v of villageVillagers) {
+            if (!v.visible) continue;
+            _animateVillager(v, scaledDt, scaledT);
+        }
     }
 
     // Fire particles + collapse for all buildings
     const allBuildings = persistentStateActive
-        ? [...buildingObjects.values(), ...villageBuildings]
+        ? [...buildingObjects.values()]
         : villageBuildings;
     for (const b of allBuildings) {
         // Fire particles

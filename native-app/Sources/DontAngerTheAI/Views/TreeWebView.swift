@@ -31,6 +31,7 @@ final class TreeWebViewStore: NSObject, ObservableObject, WKScriptMessageHandler
     var pendingStrataJSON: String = "[]"
     var pendingNebulaEntriesJSON: String = "[]"
     var pendingDailySentimentJSON: String = "[]"
+    var pendingVillageStateJSON: String = "{}"
     var currentMood: Float = 0.0
     var currentPopulation: Int = 0
     var currentTrend: Float = 0.0
@@ -54,7 +55,7 @@ final class TreeWebViewStore: NSObject, ObservableObject, WKScriptMessageHandler
 
         let consoleScript = WKUserScript(source: """
             (function(){
-                var origLog = console.log, origErr = console.error;
+                var origLog = console.log, origErr = console.error, origWarn = console.warn;
                 console.log = function() {
                     origLog.apply(console, arguments);
                     window.webkit.messageHandlers.jsLog.postMessage('[LOG] ' + Array.from(arguments).join(' '));
@@ -62,6 +63,10 @@ final class TreeWebViewStore: NSObject, ObservableObject, WKScriptMessageHandler
                 console.error = function() {
                     origErr.apply(console, arguments);
                     window.webkit.messageHandlers.jsLog.postMessage('[ERR] ' + Array.from(arguments).join(' '));
+                };
+                console.warn = function() {
+                    origWarn.apply(console, arguments);
+                    window.webkit.messageHandlers.jsLog.postMessage('[WARN] ' + Array.from(arguments).join(' '));
                 };
                 window.onerror = function(msg, url, line) {
                     window.webkit.messageHandlers.jsLog.postMessage('[ERR] ' + msg + ' at ' + url + ':' + line);
@@ -123,8 +128,12 @@ final class TreeWebViewStore: NSObject, ObservableObject, WKScriptMessageHandler
         }
         introStarted = true
         AppState.debugLog("tryInit FIRING: uniqueWords=\(pendingUniqueWords), totalWords=\(pendingTotalWords)")
+        let escapedVillageState = pendingVillageStateJSON
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "'", with: "\\'")
+            .replacingOccurrences(of: "\n", with: "\\n")
         let js = """
-        if(window.initTreeWords) window.initTreeWords(\(pendingWordDataJSON), \(pendingUniqueWords), \(pendingTotalWords), \(pendingStrataJSON));
+        if(window.initTreeWords) window.initTreeWords(\(pendingWordDataJSON), \(pendingUniqueWords), \(pendingTotalWords), \(pendingStrataJSON), '\(escapedVillageState)');
         if(window.initNebula) window.initNebula(\(pendingNebulaEntriesJSON));
         if(window.initIntroStats) window.initIntroStats(\(pendingDailySentimentJSON));
         """
@@ -219,6 +228,7 @@ struct TreeWebView: NSViewRepresentable {
             store.pendingStrataJSON = strataJSON
             store.pendingNebulaEntriesJSON = nebulaEntriesJSON
             store.pendingDailySentimentJSON = dailySentimentJSON
+            store.pendingVillageStateJSON = villageStateJSON
             store.tryInit()
         } else if !store.introStarted {
             AppState.debugLog("updateNSView: waiting (wordDataJSON empty, pageReady=\(store.pageReady))")

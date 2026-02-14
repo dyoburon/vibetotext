@@ -11,6 +11,7 @@ import { loadModel, normalizeModel, centerModel, preloadAllModels } from './mode
 import { createNebula, animateNebula, isNebulaInitialized, updateEntries as updateNebulaEntries } from './nebula.js';
 import { updateWordPulses } from './words.js';
 import { preloadVillageModels } from './village.js';
+import './shader-debug.js';
 
 // ══════════════════════════════════════════
 // ── SCENE SETUP ──
@@ -28,7 +29,22 @@ renderer.setPixelRatio(window.devicePixelRatio);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.2;
 renderer.localClippingEnabled = true;
+renderer.debug.checkShaderErrors = true;
+// Catch shader compilation errors
+renderer.debug.onShaderError = function(gl, program, vs, fs) {
+    const vsLog = gl.getShaderInfoLog(vs);
+    const fsLog = gl.getShaderInfoLog(fs);
+    if (vsLog) console.error('SHADER VERT ERROR: ' + vsLog);
+    if (fsLog) console.error('SHADER FRAG ERROR: ' + fsLog);
+    const progLog = gl.getProgramInfoLog(program);
+    if (progLog) console.error('SHADER LINK ERROR: ' + progLog);
+};
 document.body.appendChild(renderer.domElement);
+
+// Expose for shader debugging
+window._renderer = renderer;
+window._scene = scene;
+window._camera = camera;
 
 // ── Controls ──
 const controls = new OrbitControls(camera, renderer.domElement);
@@ -230,10 +246,18 @@ function onIntroComplete() {
 // ── WINDOW API (called from Swift) ──
 // ══════════════════════════════════════════
 
-window.initTreeWords = function(wordData, uniqueWords, totalWords, strata) {
+window.initTreeWords = function(wordData, uniqueWords, totalWords, strata, villageStateJSON) {
     uniqueWords = uniqueWords || wordData.length;
     totalWords = totalWords || wordData.reduce((s, w) => s + w.count, 0);
     strata = strata || [];
+
+    let villageState = null;
+    if (villageStateJSON) {
+        try {
+            villageState = typeof villageStateJSON === 'string'
+                ? JSON.parse(villageStateJSON) : villageStateJSON;
+        } catch (e) { /* ignore parse errors, fall back to procedural */ }
+    }
 
     const wasAlreadyDone = getPhase() === 'done';
 
@@ -246,7 +270,7 @@ window.initTreeWords = function(wordData, uniqueWords, totalWords, strata) {
     // Create village objects (hidden) for time-lapse growth during intro
     if (!isVillageInitialized()) {
         const isIntro = getPhase() === 'waiting';
-        initVillage(scene, totalWords, isIntro).then(() => {
+        initVillage(scene, totalWords, isIntro, villageState).then(() => {
             const counts = getVillageCounts();
             setIntroTargets(counts.villagers, counts.buildings);
         });

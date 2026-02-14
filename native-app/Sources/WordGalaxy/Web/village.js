@@ -34,7 +34,15 @@ const ROLE_TO_VARIANT = {
     farmer: 0, blacksmith: 1, scholar: 2, guard_: 3, guard: 3, builder: 4, mayor: 2,
 };
 
-export async function preloadVillageModels() {
+let preloadPromise = null;
+export function preloadVillageModels() {
+    if (!preloadPromise) {
+        preloadPromise = _doPreloadModels();
+    }
+    return preloadPromise;
+}
+
+async function _doPreloadModels() {
     const houseFiles = ['house_01.glb', 'house_02.glb', 'house_03.glb', 'house_04.glb'];
     const villagerFiles = ['villager_01.glb', 'villager_02.glb', 'villager_03.glb', 'villager_04.glb', 'villager_05.glb'];
     await Promise.allSettled([
@@ -438,10 +446,16 @@ function _generateCropLayout(rng, buildings, cropCount) {
     return placed;
 }
 
-// ── Village initialization (procedural — used for intro) ──
-export function initVillage(scene, totalWords, startHidden) {
+// ── Village initialization ──
+let villageInitStarted = false;
+export async function initVillage(scene, totalWords, startHidden) {
     currentTotalWords = totalWords || currentTotalWords;
-    if (villageInitialized) return;
+    if (villageInitStarted) return;
+    villageInitStarted = true;
+
+    // Wait for GLB models to load before creating buildings/villagers
+    await preloadVillageModels();
+
     const rng = villageRng;
 
     const buildingCount = Math.max(5, Math.min(100, 5 + Math.floor(Math.log2(Math.max(1, currentTotalWords / 50)) * 4)));
@@ -461,25 +475,15 @@ export function initVillage(scene, totalWords, startHidden) {
     for (const b of layout) {
         const { theta, phi } = flatToSpherical(b.x, b.z, maxFlatR);
         const building = createBuilding(b.size, mulberry32(Math.floor(b.x * 100 + b.z * 77)));
-        placeOnSphere(building, theta, phi, PLANET_RADIUS);
+        placeOnSphere(building, theta, phi, PLANET_RADIUS * 0.95);
         building.rotateY(rng() * Math.PI * 2); // random facing
         if (startHidden) building.visible = false;
         scene.add(building);
         villageBuildings.push(building);
     }
 
-    // Place crops in gaps
-    const cropCount = Math.max(3, Math.floor(buildingCount * 0.4));
-    const cropLayout = _generateCropLayout(rng, layout, cropCount);
-    for (const c of cropLayout) {
-        const { theta, phi } = flatToSpherical(c.x, c.z, maxFlatR);
-        const crop = createCropPatch(rng);
-        placeOnSphere(crop, theta, phi, PLANET_RADIUS);
-        crop.rotateY(rng() * Math.PI);
-        if (startHidden) crop.visible = false;
-        scene.add(crop);
-        villageCrops.push(crop);
-    }
+    // Crops disabled — using GLB models only
+    // (crop code kept for potential future use)
 
     const maxVillagers = Math.max(5, Math.min(60, Math.floor(buildingCount * 0.8)));
     _spawnVillagers(scene, maxVillagers, startHidden, maxFlatR);
@@ -529,7 +533,7 @@ function _spawnVillagers(scene, count, startHidden, maxFlatR) {
         const r = baseRadius * 0.6 + rng() * baseRadius * 0.8;
         const phi = _flatRadiusToPhi(r, maxFlatR);
         const v = createVillager(rng);
-        placeOnSphere(v, theta, phi, PLANET_RADIUS);
+        placeOnSphere(v, theta, phi, PLANET_RADIUS * 0.95);
         v.userData.targetTheta = theta + (rng() - 0.5) * 0.3;
         v.userData.targetPhi = Math.max(0.05, phi + (rng() - 0.5) * 0.3);
         if (startHidden) v.visible = false;
@@ -567,7 +571,7 @@ export function updateVillageState(scene, stateData) {
             const rng = mulberry32(bState.id * 1337 + 42);
             const b = createBuilding(bState.size, rng);
             const { theta, phi } = flatToSpherical(bState.position.x, bState.position.z, maxFlatR);
-            placeOnSphere(b, theta, phi, PLANET_RADIUS);
+            placeOnSphere(b, theta, phi, PLANET_RADIUS * 0.95);
             b.rotateY((rng() - 0.5) * 0.3);
             scene.add(b);
             buildingObjects.set(bState.id, b);
@@ -593,7 +597,7 @@ export function updateVillageState(scene, stateData) {
             const rng = mulberry32(vState.id * 2654 + 99);
             const v = createVillager(rng, vState.role);
             const { theta, phi } = flatToSpherical(vState.position.x, vState.position.z, maxFlatR);
-            placeOnSphere(v, theta, phi, PLANET_RADIUS);
+            placeOnSphere(v, theta, phi, PLANET_RADIUS * 0.95);
             v.userData.villagerId = vState.id;
             v.userData.name = vState.name;
             v.userData.role = vState.role;
@@ -624,7 +628,7 @@ export function updateVillageState(scene, stateData) {
         if (!gravestoneObjects.has(grave.villagerId)) {
             const gs = createGravestone(grave.name, grave.role);
             const { theta, phi } = flatToSpherical(grave.position.x, grave.position.z, maxFlatR);
-            placeOnSphere(gs, theta, phi, PLANET_RADIUS);
+            placeOnSphere(gs, theta, phi, PLANET_RADIUS * 0.95);
             scene.add(gs);
             gravestoneObjects.set(grave.villagerId, gs);
         }
@@ -716,8 +720,8 @@ export function placeGravestoneAt(scene, villagerObj, name, role) {
     const villagerId = villagerObj.userData.villagerId;
     if (villagerId != null && gravestoneObjects.has(villagerId)) return null;
     const gs = createGravestone(name, role);
-    gs.position.copy(villagerObj.position).normalize().multiplyScalar(PLANET_RADIUS);
-    orientOnSphere(gs, PLANET_RADIUS);
+    gs.position.copy(villagerObj.position).normalize().multiplyScalar(PLANET_RADIUS * 0.95);
+    orientOnSphere(gs, PLANET_RADIUS * 0.95);
     gs.scale.set(1, 0, 1); // start hidden, will grow
     scene.add(gs);
     if (villagerId != null) gravestoneObjects.set(villagerId, gs);
@@ -939,7 +943,7 @@ function _animateVillager(v, scaledDt, scaledT) {
 
     // Bob along surface normal
     const dir = v.position.clone().normalize();
-    v.position.copy(dir).multiplyScalar(PLANET_RADIUS);
+    v.position.copy(dir).multiplyScalar(PLANET_RADIUS * 0.95);
     const bob = Math.abs(Math.sin(scaledT * 6 * v.userData.speed + v.userData.phaseOffset)) * 0.025;
     v.position.addScaledVector(dir, bob);
 }

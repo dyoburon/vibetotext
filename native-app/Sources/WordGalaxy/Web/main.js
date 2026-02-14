@@ -126,7 +126,8 @@ scene.add(planet);
 (async () => {
     const glb = await loadModel('planet.glb');
     if (glb) {
-        normalizeModel(glb, PLANET_RADIUS * 2);
+        // Scale planet to 2x PLANET_RADIUS diameter, then center
+        normalizeModel(glb, PLANET_RADIUS * 2.4576 * 0.8);
         centerModel(glb);
         scene.remove(planet);
         scene.add(glb);

@@ -8,13 +8,14 @@ Usage:
 """
 
 import argparse
+import os
 import requests
 import time
 import sys
 from pathlib import Path
 
 API_BASE = "https://api.tripo3d.ai/v2/openapi"
-API_KEY = "tsk_ZmNVHudDgXQMdTOWdbuO1NbyvszIAvDhCHmbCOoeZ9c"
+API_KEY = os.environ.get("TRIPO_API_KEY", "tsk_XrmdjkpD3LIrm8IxHQlil-zccCW-MEVtJDjBfTv2pYg")
 HEADERS = {
     "Content-Type": "application/json",
     "Authorization": f"Bearer {API_KEY}",

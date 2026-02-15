@@ -621,6 +621,13 @@ export async function initVillage(scene, totalWords, startHidden, stateData, roo
                 uniform float uNoiseScale;
                 uniform float uBaseAlpha;
                 uniform float uSwayAmount;
+                uniform float uWaveGlow;
+                uniform float uWaveFalloff;
+                uniform float uWaveSpacing;
+                uniform float uWaveWobble;
+                uniform float uWaveScrollSpd;
+                uniform float uWaveScrollRange;
+                uniform float uWaveAlpha;
                 varying vec3 vWorldPos;
                 varying vec3 vNormal;
 
@@ -653,19 +660,19 @@ export async function initVillage(scene, totalWords, startHidden, stateData, roo
                 }
 
                 // Single wave glow: division-based falloff + tanh clamp (matches sky-entity ring)
-                float waveLine(float y, float cx, float cz, float center, float wobbleSpd, float width) {
-                    float shape = sin(cx * 0.2 + wobbleSpd * 1.0) * 0.3
-                               + sin(cz * 0.3 + wobbleSpd * 0.7) * 0.2;
+                float waveLine(float y, float cx, float cz, float center, float wobbleSpd, float intensity) {
+                    float shape = sin(cx * 0.2 + wobbleSpd * 1.0) * uWaveWobble
+                               + sin(cz * 0.3 + wobbleSpd * 0.7) * uWaveWobble * 0.67;
                     float dist = abs(y - center - shape);
-                    float glow = width / (0.3 + dist);  // bright center, smooth falloff
-                    return glow / (1.0 + glow);          // tanh soft clamp
+                    float glow = intensity / (uWaveFalloff + dist);
+                    return glow / (1.0 + glow);  // tanh soft clamp
                 }
 
                 void main() {
                     float s = starLayer(vWorldPos, 0.3);
 
-                    // Group center — oscillates a bit higher up the torso
-                    float groupCenter = sin(uTime * 0.4) * 40.0 + 5.0;
+                    // Group center — oscillates up the torso
+                    float groupCenter = sin(uTime * uWaveScrollSpd) * uWaveScrollRange + 5.0;
 
                     float y = vWorldPos.y;
                     float cx = vWorldPos.x;
@@ -677,9 +684,9 @@ export async function initVillage(scene, totalWords, startHidden, stateData, roo
                     vec3 blueCol = vec3(0.3, 0.7, 1.0);
                     vec3 purpleCol = vec3(0.5, 0.3, 0.95);
 
-                    float w1 = waveLine(y, cx, cz, groupCenter - 5.0, uTime * 2.0, 1.5) * 0.7;
-                    float w2 = waveLine(y, cx, cz, groupCenter,       uTime * 2.1, 2.0) * 0.85;
-                    float w3 = waveLine(y, cx, cz, groupCenter + 5.0, uTime * 1.9, 1.5) * 0.7;
+                    float w1 = waveLine(y, cx, cz, groupCenter - uWaveSpacing, uTime * 2.0, uWaveGlow) * 0.7;
+                    float w2 = waveLine(y, cx, cz, groupCenter,                uTime * 2.1, uWaveGlow * 1.33) * 0.85;
+                    float w3 = waveLine(y, cx, cz, groupCenter + uWaveSpacing, uTime * 1.9, uWaveGlow) * 0.7;
                     waves = w1 + w2 + w3;
 
                     waveColor += purpleCol * w1;
@@ -703,7 +710,7 @@ export async function initVillage(scene, totalWords, startHidden, stateData, roo
                     float edgeFade = smoothstep(0.0, uEdgeWidth, facing + (noise - 0.5) * uNoiseStrength);
 
                     vec3 color = vec3(0.6, 0.85, 1.0) * s * 1.5 + waveColor;
-                    float alpha = (s * 1.4 + waves * 0.7 + uBaseAlpha) * edgeFade;
+                    float alpha = (s * 1.4 + waves * uWaveAlpha + uBaseAlpha) * edgeFade;
                     alpha = clamp(alpha, 0.0, 1.0);
                     gl_FragColor = vec4(color, alpha);
                 }
@@ -716,6 +723,13 @@ export async function initVillage(scene, totalWords, startHidden, stateData, roo
                 uNoiseScale: { value: 4.3 },
                 uBaseAlpha: { value: 0.03 },
                 uSwayAmount: { value: 0.2 },
+                uWaveGlow: { value: 1.5 },
+                uWaveFalloff: { value: 0.3 },
+                uWaveSpacing: { value: 5.0 },
+                uWaveWobble: { value: 0.3 },
+                uWaveScrollSpd: { value: 0.4 },
+                uWaveScrollRange: { value: 40.0 },
+                uWaveAlpha: { value: 0.7 },
             };
             const cosmicMaterial = new THREE.ShaderMaterial({
                 uniforms: cosmicUniforms,
@@ -743,8 +757,23 @@ export async function initVillage(scene, totalWords, startHidden, stateData, roo
                 { key: 'uNoiseScale', label: 'Noise Scale', min: 0.1, max: 10, step: 0.1, val: 4.3 },
                 { key: 'uBaseAlpha', label: 'Base Alpha', min: 0, max: 1, step: 0.01, val: 0.03 },
                 { key: 'uSwayAmount', label: 'Sway', min: 0, max: 5, step: 0.1, val: 0.2 },
+                { key: '_divider', label: '── Wave Lines ──' },
+                { key: 'uWaveGlow', label: 'Glow Intensity', min: 0, max: 5, step: 0.05, val: 1.5 },
+                { key: 'uWaveFalloff', label: 'Glow Falloff', min: 0.01, max: 2, step: 0.01, val: 0.3 },
+                { key: 'uWaveSpacing', label: 'Spacing', min: 0, max: 20, step: 0.5, val: 5.0 },
+                { key: 'uWaveWobble', label: 'Wobble', min: 0, max: 3, step: 0.05, val: 0.3 },
+                { key: 'uWaveScrollSpd', label: 'Scroll Speed', min: 0, max: 2, step: 0.05, val: 0.4 },
+                { key: 'uWaveScrollRange', label: 'Scroll Range', min: 0, max: 80, step: 1, val: 40.0 },
+                { key: 'uWaveAlpha', label: 'Wave Alpha', min: 0, max: 2, step: 0.05, val: 0.7 },
             ];
             sliders.forEach(s => {
+                if (s.key === '_divider') {
+                    const divider = document.createElement('div');
+                    divider.style.cssText = 'margin:10px 0 6px;font-size:13px;font-weight:bold;color:#8af;';
+                    divider.textContent = s.label;
+                    panel.appendChild(divider);
+                    return;
+                }
                 const row = document.createElement('div');
                 row.style.cssText = 'margin:6px 0;';
                 const valSpan = document.createElement('span');

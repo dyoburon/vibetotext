@@ -647,6 +647,35 @@ export async function initVillage(scene, totalWords, startHidden, stateData, roo
                     return fract((p.x + p.y) * p.z);
                 }
 
+                // Smooth value noise (interpolated hash)
+                float vnoise(vec3 p) {
+                    vec3 i = floor(p);
+                    vec3 f = fract(p);
+                    f = f * f * (3.0 - 2.0 * f); // smoothstep
+                    float a = hash(i);
+                    float b = hash(i + vec3(1,0,0));
+                    float c = hash(i + vec3(0,1,0));
+                    float d = hash(i + vec3(1,1,0));
+                    float e = hash(i + vec3(0,0,1));
+                    float g = hash(i + vec3(1,0,1));
+                    float h = hash(i + vec3(0,1,1));
+                    float k = hash(i + vec3(1,1,1));
+                    return mix(mix(mix(a,b,f.x), mix(c,d,f.x), f.y),
+                               mix(mix(e,g,f.x), mix(h,k,f.x), f.y), f.z);
+                }
+
+                // Fractal brownian motion — layered noise for clouds
+                float fbm(vec3 p) {
+                    float v = 0.0;
+                    float amp = 0.5;
+                    for (int i = 0; i < 4; i++) {
+                        v += amp * vnoise(p);
+                        p *= 2.1;
+                        amp *= 0.5;
+                    }
+                    return v;
+                }
+
                 // Stars with subtle swirl around Y axis
                 float starLayer(vec3 p, float scale) {
                     float angle = uTime * 0.08;
@@ -669,64 +698,113 @@ export async function initVillage(scene, totalWords, startHidden, stateData, roo
                     return smoothstep(0.1, 0.0, minD);
                 }
 
-                // Single wave glow: division-based falloff + exp tail cutoff + tanh clamp
-                float waveLine(float y, float cx, float cz, float center, float wobbleSpd, float intensity) {
-                    float shape = sin(cx * 0.2 + wobbleSpd * 1.0) * uWaveWobble
-                               + sin(cz * 0.3 + wobbleSpd * 0.7) * uWaveWobble * 0.67;
-                    float dist = abs(y - center - shape);
-                    float glow = intensity / (uWaveFalloff + dist);
-                    glow *= exp(-dist * 0.3);    // kill the long tail so color stays local
-                    return glow / (1.0 + glow);  // tanh soft clamp
+                // Band proximity — how close a point is to the Milky Way band center
+                float bandProximity(float y, float cx, float cz, float center) {
+                    float shape = sin(cx * 0.2 + uTime * uWaveScrollSpd * 2.0) * uWaveWobble
+                               + sin(cz * 0.3 + uTime * uWaveScrollSpd * 1.4) * uWaveWobble * 0.67;
+                    return abs(y - center - shape);
                 }
 
                 void main() {
-                    float s = starLayer(vWorldPos, 0.3);
-
-                    // Group center — oscillates up the torso
-                    float groupCenter = sin(uTime * uWaveScrollSpd) * uWaveScrollRange + 5.0;
-
                     float y = vWorldPos.y;
                     float cx = vWorldPos.x;
                     float cz = vWorldPos.z;
 
-                    // 3 stacked lines: purple, blue, purple
-                    float waves = 0.0;
-                    vec3 waveColor = vec3(0.0);
-                    vec3 blueCol = vec3(0.043, 0.365, 0.522);   // #0b5d85 muted teal
-                    vec3 purpleCol = vec3(0.427, 0.396, 0.518); // #6d6584 dusty lavender
+                    // Band center — oscillates up the torso
+                    float groupCenter = sin(uTime * uWaveScrollSpd) * uWaveScrollRange + 5.0;
 
-                    float w1 = waveLine(y, cx, cz, groupCenter - uWaveSpacing, uTime * 2.0, uWaveGlow) * 0.7;
-                    float w2 = waveLine(y, cx, cz, groupCenter,                uTime * 2.1, uWaveGlow * 1.33) * 0.85;
-                    float w3 = waveLine(y, cx, cz, groupCenter + uWaveSpacing, uTime * 1.9, uWaveGlow) * 0.7;
-                    waves = w1 + w2 + w3;
+                    // ── Band mask: how much this pixel is "in" the Milky Way ──
+                    float distToBand = bandProximity(y, cx, cz, groupCenter);
+                    float bandWidth = uWaveSpacing * 2.5;
+                    float bandMask = exp(-distToBand * distToBand / (bandWidth * bandWidth));
 
-                    waveColor += purpleCol * w1;
-                    waveColor += blueCol * w2;
-                    waveColor += purpleCol * w3;
-                    // Preserve hue — only clamp brightness, not per-channel
-                    float wcLen = length(waveColor);
-                    if (wcLen > 0.001) {
-                        vec3 wcDir = waveColor / wcLen;           // hue direction
-                        float wcBri = wcLen / (1.0 + wcLen);      // tanh clamp brightness
-                        waveColor = wcDir * wcBri;
+                    // ── Nebula clouds (fbm noise within the band) ──
+                    vec3 cloudPos = vWorldPos * 0.08 + vec3(uTime * 0.02, uTime * 0.01, 0.0);
+                    float cloud = fbm(cloudPos);
+                    float cloudDetail = fbm(cloudPos * 2.5 + 7.0);
+
+                    // ── Dark dust lanes — carve out dark streaks within the band ──
+                    vec3 dustPos = vWorldPos * 0.12 + vec3(uTime * 0.015, -uTime * 0.008, uTime * 0.01);
+                    float dust = fbm(dustPos + 33.0);
+                    float dustLane = smoothstep(0.35, 0.55, dust); // 0 = dark dust, 1 = clear
+
+                    // ── Stars — two layers, denser in the band ──
+                    float sparseStars = starLayer(vWorldPos, 0.3);
+                    float denseStars = starLayer(vWorldPos, 0.6);
+                    float bandStars = starLayer(vWorldPos, 1.2);
+                    // Sparse everywhere, dense in band, very dense at core
+                    float coreMask = exp(-distToBand * distToBand / (bandWidth * bandWidth * 0.15));
+                    float bgStars = sparseStars * 1.0;  // visible everywhere on body
+                    float stars = bgStars
+                                + denseStars * bandMask * 0.5
+                                + bandStars * coreMask * 0.6;
+
+                    // ── Color palette — varies spatially within the band ──
+                    vec3 tealCol    = vec3(0.1, 0.5, 0.9);       // vivid blue
+                    vec3 lavenderCol = vec3(0.3, 0.35, 0.75);    // blue-purple
+                    vec3 roseCol    = vec3(0.45, 0.45, 0.8);     // periwinkle
+                    vec3 amberCol   = vec3(0.4, 0.4, 0.55);      // cool muted core
+                    vec3 deepBlue   = vec3(0.05, 0.1, 0.3);      // deep blue
+
+                    // Noise-driven color variation
+                    float colorNoise = vnoise(vWorldPos * 0.05 + uTime * 0.01);
+                    float colorNoise2 = vnoise(vWorldPos * 0.03 + vec3(50.0, 0.0, 0.0));
+
+                    // Mix between palette colors based on position noise
+                    vec3 bandColor;
+                    if (colorNoise < 0.3) {
+                        bandColor = mix(tealCol, lavenderCol, colorNoise / 0.3);
+                    } else if (colorNoise < 0.6) {
+                        bandColor = mix(lavenderCol, roseCol, (colorNoise - 0.3) / 0.3);
+                    } else {
+                        bandColor = mix(roseCol, tealCol, (colorNoise - 0.6) / 0.4);
                     }
 
-                    // Wispy edges — noise dissolve at silhouette
+                    // ── Galactic core glow — warm amber hotspot at band center ──
+                    float coreGlow = coreMask * cloud * 1.5;
+                    coreGlow = coreGlow / (1.0 + coreGlow); // tanh clamp
+                    bandColor = mix(bandColor, amberCol, coreGlow * 0.5);
+
+                    // ── Compose the nebula band ──
+                    float nebulaIntensity = bandMask * cloud * dustLane * uWaveGlow * 0.3;
+                    nebulaIntensity = nebulaIntensity / (1.0 + nebulaIntensity); // tanh
+
+                    // Cloud detail adds wispy texture
+                    float wisps = cloudDetail * bandMask * dustLane * 0.4;
+                    wisps = wisps / (1.0 + wisps);
+
+                    vec3 nebulaColor = bandColor * (nebulaIntensity + wisps);
+
+                    // ── Soft outer halo — faint diffuse glow around band ──
+                    float haloWidth = bandWidth * 2.0;
+                    float halo = exp(-distToBand * distToBand / (haloWidth * haloWidth)) * 0.08;
+                    vec3 haloColor = mix(deepBlue, lavenderCol, 0.3) * halo;
+
+                    // ── Preserve hue brightness clamp ──
+                    float ncLen = length(nebulaColor);
+                    if (ncLen > 0.001) {
+                        vec3 ncDir = nebulaColor / ncLen;
+                        float ncBri = ncLen / (1.0 + ncLen);
+                        nebulaColor = ncDir * ncBri;
+                    }
+
+                    // ── Wispy edges — noise dissolve at silhouette ──
                     vec3 V = normalize(cameraPosition - vWorldPos);
                     float nLen = length(vNormal);
                     vec3 N = nLen > 0.001 ? vNormal / nLen : vec3(0.0, 0.0, 1.0);
                     float facing = abs(dot(N, V));
 
-                    // Animated noise that shifts over time
                     float n1 = hash(vWorldPos * uNoiseScale + uTime * 0.2);
                     float n2 = hash(vWorldPos * uNoiseScale * 2.0 - uTime * 0.15);
                     float noise = (n1 + n2) * 0.5;
-
-                    // Dissolve: noise eats into the edge region
                     float edgeFade = smoothstep(0.0, uEdgeWidth, facing + (noise - 0.5) * uNoiseStrength);
 
-                    vec3 color = vec3(0.6, 0.85, 1.0) * s * 1.5 + waveColor;
-                    float alpha = (s * 1.4 + waves * uWaveAlpha + uBaseAlpha) * edgeFade;
+                    // ── Star colors — warm tint near core, cool elsewhere ──
+                    vec3 starColor = mix(vec3(0.7, 0.85, 1.0), vec3(1.0, 0.9, 0.7), coreMask);
+
+                    // ── Final composite ──
+                    vec3 color = starColor * stars * 1.5 + nebulaColor + haloColor;
+                    float alpha = (stars * 1.2 + nebulaIntensity + wisps * 0.5 + halo + uBaseAlpha) * edgeFade;
                     alpha = clamp(alpha, 0.0, 1.0);
                     gl_FragColor = vec4(color, alpha);
                 }
@@ -739,14 +817,14 @@ export async function initVillage(scene, totalWords, startHidden, stateData, roo
                 uNoiseScale: { value: 4.3 },
                 uBaseAlpha: { value: 0.03 },
                 uSwayAmount: { value: 1.7 },
-                uSwaySpeed: { value: 0.1 },
-                uWaveGlow: { value: 8.3 },
-                uWaveFalloff: { value: 0.01 },
-                uWaveSpacing: { value: 5.5 },
-                uWaveWobble: { value: 0.85 },
-                uWaveScrollSpd: { value: 0.45 },
-                uWaveScrollRange: { value: 44.0 },
-                uWaveAlpha: { value: 0.3 },
+                uSwaySpeed: { value: 0.4 },
+                uWaveGlow: { value: 6.15 },
+                uWaveFalloff: { value: 1.7 },
+                uWaveSpacing: { value: 3.0 },
+                uWaveWobble: { value: 1.15 },
+                uWaveScrollSpd: { value: 0.2 },
+                uWaveScrollRange: { value: 72.0 },
+                uWaveAlpha: { value: 0.0 },
             };
             const cosmicMaterial = new THREE.ShaderMaterial({
                 uniforms: cosmicUniforms,
@@ -774,15 +852,15 @@ export async function initVillage(scene, totalWords, startHidden, stateData, roo
                 { key: 'uNoiseScale', label: 'Noise Scale', min: 0.1, max: 10, step: 0.1, val: 4.3 },
                 { key: 'uBaseAlpha', label: 'Base Alpha', min: 0, max: 1, step: 0.01, val: 0.03 },
                 { key: 'uSwayAmount', label: 'Sway Amount', min: 0, max: 5, step: 0.1, val: 1.7 },
-                { key: 'uSwaySpeed', label: 'Sway Speed', min: 0, max: 5, step: 0.1, val: 0.1 },
+                { key: 'uSwaySpeed', label: 'Sway Speed', min: 0, max: 5, step: 0.1, val: 0.4 },
                 { key: '_divider', label: '── Wave Lines ──' },
-                { key: 'uWaveGlow', label: 'Glow Intensity', min: 0, max: 10, step: 0.05, val: 8.3 },
-                { key: 'uWaveFalloff', label: 'Glow Falloff', min: 0.01, max: 5, step: 0.01, val: 0.01 },
-                { key: 'uWaveSpacing', label: 'Spacing', min: 0, max: 20, step: 0.5, val: 5.5 },
-                { key: 'uWaveWobble', label: 'Wobble', min: 0, max: 3, step: 0.05, val: 0.85 },
-                { key: 'uWaveScrollSpd', label: 'Scroll Speed', min: 0, max: 2, step: 0.05, val: 0.45 },
-                { key: 'uWaveScrollRange', label: 'Scroll Range', min: 0, max: 80, step: 1, val: 44.0 },
-                { key: 'uWaveAlpha', label: 'Wave Alpha', min: 0, max: 2, step: 0.05, val: 0.3 },
+                { key: 'uWaveGlow', label: 'Glow Intensity', min: 0, max: 10, step: 0.05, val: 6.15 },
+                { key: 'uWaveFalloff', label: 'Glow Falloff', min: 0.01, max: 5, step: 0.01, val: 1.7 },
+                { key: 'uWaveSpacing', label: 'Spacing', min: 0, max: 20, step: 0.5, val: 3.0 },
+                { key: 'uWaveWobble', label: 'Wobble', min: 0, max: 3, step: 0.05, val: 1.15 },
+                { key: 'uWaveScrollSpd', label: 'Scroll Speed', min: 0, max: 2, step: 0.05, val: 0.2 },
+                { key: 'uWaveScrollRange', label: 'Scroll Range', min: 0, max: 80, step: 1, val: 72.0 },
+                { key: 'uWaveAlpha', label: 'Wave Alpha', min: 0, max: 2, step: 0.05, val: 0.0 },
             ];
             sliders.forEach(s => {
                 if (s.key === '_divider') {

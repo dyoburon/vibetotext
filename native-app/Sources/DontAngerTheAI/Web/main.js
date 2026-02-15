@@ -5,7 +5,7 @@ import { createTreeMaterials, generateTree, getTreeState, getTreeMaterials } fro
 import { assignWordsToLeaves, createTreeWordSprites, getLeafWordSprites, startRainSprites, getRainSprites, cleanupRainSprites, initRaycasting, hidePopup } from './words.js';
 import { getPhase, startRainGrowth, skipToDone, updateRainGrowthPhase, updateBrightenPhase, consumePendingVillageUpdate, setPendingVillageUpdate, getIntroProgress, setIntroTargets, initSentimentGraph } from './intro.js';
 import { initVillage, updateVillageMood as applyVillageMood, animateVillage, isInitialized as isVillageInitialized, getVillageMood, setVillageGrowthProgress, setVillageTimeScale, updateVillageState as applyVillageState, getVillageCounts } from './village.js';
-import { animateSkyEntity } from './sky-entity.js';
+import { animateSkyEntity, triggerNebulaGaze } from './sky-entity.js';
 import { initAttackController, updateAttackController, setAttackMood, skipAttackCinematic, isAttackActive } from './attack-controller.js';
 import { loadModel, normalizeModel, centerModel, preloadAllModels } from './model-loader.js';
 import { createNebula, animateNebula, isNebulaInitialized, updateEntries as updateNebulaEntries, getNebulaGroup } from './nebula.js';
@@ -332,6 +332,7 @@ window.initNebula = function(entries) {
 window.updateNebula = function(entries) {
     if (isNebulaInitialized() && entries && entries.length > 0) {
         updateNebulaEntries(entries);
+        triggerNebulaGaze();
     }
 };
 

@@ -6,6 +6,15 @@ let laserFiring = false;
 let chargeEffect = false;
 let chargeIntensity = 0; // 0→1 during charge phase
 
+// ── Gaze target system ──
+const PLANET_POS = new THREE.Vector3(0, -42, -62);
+const NEBULA_POS = new THREE.Vector3(73, -10, -21);
+const gazeTarget = PLANET_POS.clone(); // current interpolated gaze position
+let gazeGoal = PLANET_POS;             // where we want to look
+let nebulaGazeTimer = 0;               // seconds remaining to look at nebula
+const NEBULA_GAZE_DURATION = 3.0;      // how long to look at nebula
+const GAZE_LERP_SPEED = 2.0;           // how fast to transition
+
 // ══════════════════════════════════════════
 // ── BLACK HOLE GLSL SHADERS ──
 // ══════════════════════════════════════════
@@ -309,8 +318,31 @@ export function updateSkyFace(mood, cameraPosition) {
     skyEntity.faceTex.needsUpdate = true;
 }
 
+export function triggerNebulaGaze() {
+    nebulaGazeTimer = NEBULA_GAZE_DURATION;
+    gazeGoal = NEBULA_POS;
+}
+
+let lastGazeT = 0;
+
 export function animateSkyEntity(t, mood, cameraPosition) {
     if (!skyEntity) return;
+
+    // ── Update gaze target ──
+    const dt = lastGazeT > 0 ? Math.min(t - lastGazeT, 0.05) : 0.016;
+    lastGazeT = t;
+
+    if (nebulaGazeTimer > 0) {
+        nebulaGazeTimer -= dt;
+        if (nebulaGazeTimer <= 0) {
+            gazeGoal = PLANET_POS;
+            nebulaGazeTimer = 0;
+        }
+    }
+
+    // Smooth lerp toward goal
+    const lerpFactor = 1 - Math.exp(-GAZE_LERP_SPEED * dt);
+    gazeTarget.lerp(gazeGoal, lerpFactor);
 
     // Update shader uniforms
     skyEntity.mat.uniforms.uTime.value = t;
@@ -324,18 +356,16 @@ export function animateSkyEntity(t, mood, cameraPosition) {
         skyEntity.mesh.lookAt(cameraPosition);
     }
 
-    // Redraw face when camera moves significantly, or always during charge/laser
+    // Redraw face when gaze moves or during charge/laser
     const forceRedraw = chargeEffect || laserFiring;
-    if (cameraPosition) {
-        if (!lastPupilUpdatePos) {
-            lastPupilUpdatePos = cameraPosition.clone();
-            updateSkyFace(mood, cameraPosition);
-        } else {
-            const dist = lastPupilUpdatePos.distanceTo(cameraPosition);
-            if (dist > 0.5 || forceRedraw) {
-                lastPupilUpdatePos.copy(cameraPosition);
-                updateSkyFace(mood, cameraPosition);
-            }
+    if (!lastPupilUpdatePos) {
+        lastPupilUpdatePos = gazeTarget.clone();
+        updateSkyFace(mood, gazeTarget);
+    } else {
+        const dist = lastPupilUpdatePos.distanceTo(gazeTarget);
+        if (dist > 0.3 || forceRedraw) {
+            lastPupilUpdatePos.copy(gazeTarget);
+            updateSkyFace(mood, gazeTarget);
         }
     }
 }

@@ -589,22 +589,32 @@ export async function initVillage(scene, totalWords, startHidden, stateData, roo
             const cosmicVert = /* glsl */`
                 uniform float uTime;
                 uniform float uSwayAmount;
+                uniform float uSwaySpeed;
                 varying vec3 vWorldPos;
                 varying vec3 vNormal;
                 void main() {
-                    // Wind sway — direction drifts, intensity gusts
-                    float windAngle = uTime * 0.15 + sin(uTime * 0.07) * 1.5;
+                    float st = uTime * uSwaySpeed;
+
+                    // Height factor — head stable, lower body billows most
+                    float heightFactor = 1.0 - smoothstep(0.0, 60.0, position.y);
+
+                    // Wind direction drifts slowly
+                    float windAngle = st * 0.15 + sin(st * 0.07) * 1.5;
                     vec3 windDir = normalize(vec3(cos(windAngle), 0.05, sin(windAngle)));
 
-                    // Gusting intensity — slow envelope with occasional surges
-                    float gust = 0.6 + 0.4 * sin(uTime * 0.3) * sin(uTime * 0.17 + 2.0);
+                    // Gusting intensity
+                    float gust = 0.6 + 0.4 * sin(st * 0.3) * sin(st * 0.17 + 2.0);
 
-                    // Layered waves at different timescales
-                    float slow = sin(position.y * 0.15 + uTime * 0.4) * 0.03 * uSwayAmount;
-                    float med  = sin(position.x * 0.4 + uTime * 0.9) * 0.015 * uSwayAmount;
-                    float fast = sin((position.y + position.z) * 0.6 + uTime * 1.8) * 0.006 * uSwayAmount;
+                    // Primary traveling wave — high spatial freq for cloth-like ripple
+                    float wave1 = sin(position.x * 4.0 + position.z * 2.5 - st * 3.0) * 0.012;
+                    // Secondary wave at different angle
+                    float wave2 = sin(position.x * 3.0 - position.z * 3.5 - st * 2.2) * 0.008;
+                    // High-freq cloth flutter — many small ripples across surface
+                    float ripple = sin(position.x * 8.0 + position.y * 3.0 - st * 5.0) * 0.004
+                                 + sin(position.z * 7.0 - position.y * 2.5 + st * 4.5) * 0.003
+                                 + sin((position.x + position.z) * 6.0 + st * 3.8) * 0.003;
 
-                    float sway = (slow + med + fast) * gust;
+                    float sway = (wave1 + wave2 + ripple) * gust * heightFactor * uSwayAmount;
                     vec3 displaced = position + windDir * sway;
 
                     vec4 wp = modelMatrix * vec4(displaced, 1.0);
@@ -659,12 +669,13 @@ export async function initVillage(scene, totalWords, startHidden, stateData, roo
                     return smoothstep(0.1, 0.0, minD);
                 }
 
-                // Single wave glow: division-based falloff + tanh clamp (matches sky-entity ring)
+                // Single wave glow: division-based falloff + exp tail cutoff + tanh clamp
                 float waveLine(float y, float cx, float cz, float center, float wobbleSpd, float intensity) {
                     float shape = sin(cx * 0.2 + wobbleSpd * 1.0) * uWaveWobble
                                + sin(cz * 0.3 + wobbleSpd * 0.7) * uWaveWobble * 0.67;
                     float dist = abs(y - center - shape);
                     float glow = intensity / (uWaveFalloff + dist);
+                    glow *= exp(-dist * 0.3);    // kill the long tail so color stays local
                     return glow / (1.0 + glow);  // tanh soft clamp
                 }
 
@@ -692,8 +703,13 @@ export async function initVillage(scene, totalWords, startHidden, stateData, roo
                     waveColor += purpleCol * w1;
                     waveColor += blueCol * w2;
                     waveColor += purpleCol * w3;
-                    // Tanh clamp the glow color (same as sky-entity ring)
-                    waveColor = waveColor / (1.0 + abs(waveColor));
+                    // Preserve hue — only clamp brightness, not per-channel
+                    float wcLen = length(waveColor);
+                    if (wcLen > 0.001) {
+                        vec3 wcDir = waveColor / wcLen;           // hue direction
+                        float wcBri = wcLen / (1.0 + wcLen);      // tanh clamp brightness
+                        waveColor = wcDir * wcBri;
+                    }
 
                     // Wispy edges — noise dissolve at silhouette
                     vec3 V = normalize(cameraPosition - vWorldPos);
@@ -722,14 +738,15 @@ export async function initVillage(scene, totalWords, startHidden, stateData, roo
                 uNoiseStrength: { value: 0.23 },
                 uNoiseScale: { value: 4.3 },
                 uBaseAlpha: { value: 0.03 },
-                uSwayAmount: { value: 0.2 },
-                uWaveGlow: { value: 1.5 },
-                uWaveFalloff: { value: 0.3 },
-                uWaveSpacing: { value: 5.0 },
-                uWaveWobble: { value: 0.3 },
-                uWaveScrollSpd: { value: 0.4 },
-                uWaveScrollRange: { value: 40.0 },
-                uWaveAlpha: { value: 0.7 },
+                uSwayAmount: { value: 1.7 },
+                uSwaySpeed: { value: 0.1 },
+                uWaveGlow: { value: 5.55 },
+                uWaveFalloff: { value: 2.0 },
+                uWaveSpacing: { value: 2.0 },
+                uWaveWobble: { value: 1.05 },
+                uWaveScrollSpd: { value: 0.35 },
+                uWaveScrollRange: { value: 44.0 },
+                uWaveAlpha: { value: 0.3 },
             };
             const cosmicMaterial = new THREE.ShaderMaterial({
                 uniforms: cosmicUniforms,
@@ -756,15 +773,16 @@ export async function initVillage(scene, totalWords, startHidden, stateData, roo
                 { key: 'uNoiseStrength', label: 'Noise Str', min: 0, max: 3, step: 0.01, val: 0.23 },
                 { key: 'uNoiseScale', label: 'Noise Scale', min: 0.1, max: 10, step: 0.1, val: 4.3 },
                 { key: 'uBaseAlpha', label: 'Base Alpha', min: 0, max: 1, step: 0.01, val: 0.03 },
-                { key: 'uSwayAmount', label: 'Sway', min: 0, max: 5, step: 0.1, val: 0.2 },
+                { key: 'uSwayAmount', label: 'Sway Amount', min: 0, max: 5, step: 0.1, val: 1.7 },
+                { key: 'uSwaySpeed', label: 'Sway Speed', min: 0, max: 5, step: 0.1, val: 0.1 },
                 { key: '_divider', label: '── Wave Lines ──' },
-                { key: 'uWaveGlow', label: 'Glow Intensity', min: 0, max: 5, step: 0.05, val: 1.5 },
-                { key: 'uWaveFalloff', label: 'Glow Falloff', min: 0.01, max: 2, step: 0.01, val: 0.3 },
-                { key: 'uWaveSpacing', label: 'Spacing', min: 0, max: 20, step: 0.5, val: 5.0 },
-                { key: 'uWaveWobble', label: 'Wobble', min: 0, max: 3, step: 0.05, val: 0.3 },
-                { key: 'uWaveScrollSpd', label: 'Scroll Speed', min: 0, max: 2, step: 0.05, val: 0.4 },
-                { key: 'uWaveScrollRange', label: 'Scroll Range', min: 0, max: 80, step: 1, val: 40.0 },
-                { key: 'uWaveAlpha', label: 'Wave Alpha', min: 0, max: 2, step: 0.05, val: 0.7 },
+                { key: 'uWaveGlow', label: 'Glow Intensity', min: 0, max: 10, step: 0.05, val: 5.55 },
+                { key: 'uWaveFalloff', label: 'Glow Falloff', min: 0.01, max: 5, step: 0.01, val: 2.0 },
+                { key: 'uWaveSpacing', label: 'Spacing', min: 0, max: 20, step: 0.5, val: 2.0 },
+                { key: 'uWaveWobble', label: 'Wobble', min: 0, max: 3, step: 0.05, val: 1.05 },
+                { key: 'uWaveScrollSpd', label: 'Scroll Speed', min: 0, max: 2, step: 0.05, val: 0.35 },
+                { key: 'uWaveScrollRange', label: 'Scroll Range', min: 0, max: 80, step: 1, val: 44.0 },
+                { key: 'uWaveAlpha', label: 'Wave Alpha', min: 0, max: 2, step: 0.05, val: 0.3 },
             ];
             sliders.forEach(s => {
                 if (s.key === '_divider') {

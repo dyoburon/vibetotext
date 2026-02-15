@@ -349,29 +349,19 @@ export function attachToCosmicEntity(cosmicModel, modelScale) {
     console.log('Sky face attached to cosmic entity — local pos:', mesh.position.toArray().map(v=>v.toFixed(3)));
 }
 
-// Update face position to match vertex shader sway (call each frame)
+// Update face position — head stays mostly stable, only very subtle drift
 export function updateFaceSway(t, swayAmount) {
     if (!skyEntity || !faceBasePos) return;
 
-    // Replicate the vertex shader wind formula at the head position
+    // Head should be the most stable part — just a tiny subtle drift
     const pos = faceBasePos;
-    const windAngle = t * 0.15 + Math.sin(t * 0.07) * 1.5;
-    const wx = Math.cos(windAngle), wz = Math.sin(windAngle);
-    const len = Math.sqrt(wx * wx + 0.0025 + wz * wz);
-    const dx = wx / len, dy = 0.05 / len, dz = wz / len;
-
-    const gust = 0.6 + 0.4 * Math.sin(t * 0.3) * Math.sin(t * 0.17 + 2.0);
     const amt = swayAmount !== undefined ? swayAmount : 1.0;
-
-    const slow = Math.sin(pos.y * 0.15 + t * 0.4) * 0.03 * amt;
-    const med  = Math.sin(pos.x * 0.4 + t * 0.9) * 0.015 * amt;
-    const fast = Math.sin((pos.y + pos.z) * 0.6 + t * 1.8) * 0.006 * amt;
-    const sway = (slow + med + fast) * gust;
+    const subtle = Math.sin(t * 0.5) * 0.002 * amt;
 
     skyEntity.mesh.position.set(
-        pos.x + dx * sway,
-        pos.y + dy * sway,
-        pos.z + dz * sway
+        pos.x + subtle,
+        pos.y,
+        pos.z
     );
 }
 

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mulberry32, PLANET_RADIUS, placeOnSphere, flatToSpherical, moveOnSphere, spherePosition, orientOnSphere } from './utils.js';
-import { createSkyEntity, updateSkyFace } from './sky-entity.js';
+import { createSkyEntity, updateSkyFace, attachToCosmicEntity, updateFaceSway } from './sky-entity.js';
 import { loadModel, normalizeModel } from './model-loader.js';
 
 // ── Village state ──
@@ -547,7 +547,9 @@ function _initProcedural(scene, startHidden) {
 
 // ── Village initialization ──
 let villageInitStarted = false;
-export async function initVillage(scene, totalWords, startHidden, stateData) {
+let _rootScene = null; // actual scene for cosmic entity (not worldGroup)
+export async function initVillage(scene, totalWords, startHidden, stateData, rootScene) {
+    _rootScene = rootScene || scene;
     currentTotalWords = totalWords || currentTotalWords;
     if (villageInitStarted) return;
     villageInitStarted = true;
@@ -561,7 +563,7 @@ export async function initVillage(scene, totalWords, startHidden, stateData) {
         _initProcedural(scene, startHidden);
     }
 
-    createSkyEntity(scene);
+    createSkyEntity(_rootScene);
 
     // Load cosmic entity 3D model behind the planet
     loadModel('cosmic-entity.glb').then(model => {
@@ -710,11 +712,11 @@ export async function initVillage(scene, totalWords, startHidden, stateData) {
 
             const cosmicUniforms = {
                 uTime: { value: 0 },
-                uEdgeWidth: { value: 0.5 },
-                uNoiseStrength: { value: 0.7 },
-                uNoiseScale: { value: 1.5 },
-                uBaseAlpha: { value: 0.9 },
-                uSwayAmount: { value: 1.0 },
+                uEdgeWidth: { value: 0.66 },
+                uNoiseStrength: { value: 0.23 },
+                uNoiseScale: { value: 4.3 },
+                uBaseAlpha: { value: 0.03 },
+                uSwayAmount: { value: 0.2 },
             };
             const cosmicMaterial = new THREE.ShaderMaterial({
                 uniforms: cosmicUniforms,
@@ -737,11 +739,11 @@ export async function initVillage(scene, totalWords, startHidden, stateData) {
             panel.style.cssText = 'position:fixed;top:10px;right:10px;background:rgba(0,0,0,0.85);color:#fff;padding:12px;border-radius:8px;font:12px monospace;z-index:9999;min-width:220px;';
             panel.innerHTML = '<div style="font-size:14px;margin-bottom:8px;font-weight:bold">Cosmic Debug</div>';
             const sliders = [
-                { key: 'uEdgeWidth', label: 'Edge Width', min: 0, max: 2, step: 0.01, val: 0.5 },
-                { key: 'uNoiseStrength', label: 'Noise Str', min: 0, max: 3, step: 0.01, val: 0.7 },
-                { key: 'uNoiseScale', label: 'Noise Scale', min: 0.1, max: 10, step: 0.1, val: 1.5 },
-                { key: 'uBaseAlpha', label: 'Base Alpha', min: 0, max: 1, step: 0.01, val: 0.9 },
-                { key: 'uSwayAmount', label: 'Sway', min: 0, max: 5, step: 0.1, val: 1.0 },
+                { key: 'uEdgeWidth', label: 'Edge Width', min: 0, max: 2, step: 0.01, val: 0.66 },
+                { key: 'uNoiseStrength', label: 'Noise Str', min: 0, max: 3, step: 0.01, val: 0.23 },
+                { key: 'uNoiseScale', label: 'Noise Scale', min: 0.1, max: 10, step: 0.1, val: 4.3 },
+                { key: 'uBaseAlpha', label: 'Base Alpha', min: 0, max: 1, step: 0.01, val: 0.03 },
+                { key: 'uSwayAmount', label: 'Sway', min: 0, max: 5, step: 0.1, val: 0.2 },
             ];
             sliders.forEach(s => {
                 const row = document.createElement('div');
@@ -764,10 +766,12 @@ export async function initVillage(scene, totalWords, startHidden, stateData) {
                 panel.appendChild(row);
             });
             document.body.appendChild(panel);
-            scene.add(model);
+            _rootScene.add(model);
             cosmicEntityRef = model;
 
-            // Check shader compilation using Three.js's actual compiled program
+            // Attach face to cosmic model so it sways with the body
+            attachToCosmicEntity(model, s);
+
             console.log('Cosmic shader applied — fresnel edge test active');
             console.log('Cosmic entity loaded — scale:', s.toFixed(1), 'pos:', model.position.toArray().map(v=>v.toFixed(1)), 'worldSize:', (size.y*s).toFixed(0));
         }
@@ -1106,9 +1110,11 @@ function _updateCropColors(mood) {
 
 // ── Per-frame animation ──
 export function animateVillage(dt, t) {
-    // Update cosmic entity shader time
+    // Update cosmic entity shader time + face sway
     if (cosmicEntityRef?.userData.cosmicMaterial) {
-        cosmicEntityRef.userData.cosmicMaterial.uniforms.uTime.value = t;
+        const cu = cosmicEntityRef.userData.cosmicMaterial.uniforms;
+        cu.uTime.value = t;
+        updateFaceSway(t, cu.uSwayAmount?.value);
     }
 
     const scaledDt = dt * villageTimeScale;

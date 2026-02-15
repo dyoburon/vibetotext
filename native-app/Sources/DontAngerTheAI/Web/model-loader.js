@@ -36,12 +36,8 @@ export async function loadModel(filename) {
 function cloneWithMaterials(source) {
     const clone = source.clone();
     clone.traverse(child => {
-        if (child.isMesh) {
-            if (child.material) child.material = child.material.clone();
-            // Ensure normals exist — AI-generated GLBs often lack them
-            if (child.geometry && !child.geometry.attributes.normal) {
-                child.geometry.computeVertexNormals();
-            }
+        if (child.isMesh && child.material) {
+            child.material = child.material.clone();
         }
     });
     return clone;

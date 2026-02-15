@@ -300,8 +300,9 @@ export function animateSkyEntity(t, mood, cameraPosition) {
     skyEntity.mat.uniforms.uChargeIntensity.value = chargeEffect ? chargeIntensity : 0;
     skyEntity.mat.uniforms.uLaserFiring.value = laserFiring ? 1.0 : 0.0;
 
-    // Billboard: match camera orientation so plane always faces viewer
-    if (cameraPosition) {
+    // If attached to cosmic model, skip billboard — let it move with the body
+    // Only billboard when NOT parented to the cosmic entity
+    if (cameraPosition && !skyEntity.mesh.parent?.userData?.cosmicMaterial) {
         skyEntity.mesh.lookAt(cameraPosition);
     }
 
@@ -322,6 +323,57 @@ export function animateSkyEntity(t, mood, cameraPosition) {
 }
 
 export function getSkyEntity() { return skyEntity; }
+
+// Attach face to cosmic entity model so it sways with the body
+let faceBasePos = null; // base local position before sway
+let faceModelScale = 1;
+
+export function attachToCosmicEntity(cosmicModel, modelScale) {
+    if (!skyEntity) return;
+    const mesh = skyEntity.mesh;
+
+    // Remove from scene, add as child of cosmic model
+    mesh.parent?.remove(mesh);
+    cosmicModel.add(mesh);
+
+    // Convert world position to local coords of the cosmic model
+    // Face was at world (0, 70, -60), model is at (0, 0, -65) with uniform scale
+    const s = modelScale;
+    faceModelScale = s;
+    const lx = -11 / s, ly = 70 / s, lz = (-63 - (-65)) / s;
+    faceBasePos = { x: lx, y: ly, z: lz };
+    mesh.position.set(lx, ly, lz);
+    mesh.scale.set(140 / s, 140 / s, 1 / s);
+    mesh.rotation.set(0.35, 0, 0); // tilt downward to look at village
+
+    console.log('Sky face attached to cosmic entity — local pos:', mesh.position.toArray().map(v=>v.toFixed(3)));
+}
+
+// Update face position to match vertex shader sway (call each frame)
+export function updateFaceSway(t, swayAmount) {
+    if (!skyEntity || !faceBasePos) return;
+
+    // Replicate the vertex shader wind formula at the head position
+    const pos = faceBasePos;
+    const windAngle = t * 0.15 + Math.sin(t * 0.07) * 1.5;
+    const wx = Math.cos(windAngle), wz = Math.sin(windAngle);
+    const len = Math.sqrt(wx * wx + 0.0025 + wz * wz);
+    const dx = wx / len, dy = 0.05 / len, dz = wz / len;
+
+    const gust = 0.6 + 0.4 * Math.sin(t * 0.3) * Math.sin(t * 0.17 + 2.0);
+    const amt = swayAmount !== undefined ? swayAmount : 1.0;
+
+    const slow = Math.sin(pos.y * 0.15 + t * 0.4) * 0.03 * amt;
+    const med  = Math.sin(pos.x * 0.4 + t * 0.9) * 0.015 * amt;
+    const fast = Math.sin((pos.y + pos.z) * 0.6 + t * 1.8) * 0.006 * amt;
+    const sway = (slow + med + fast) * gust;
+
+    skyEntity.mesh.position.set(
+        pos.x + dx * sway,
+        pos.y + dy * sway,
+        pos.z + dz * sway
+    );
+}
 
 // ══════════════════════════════════════════
 // ── CHARGE EFFECTS ──

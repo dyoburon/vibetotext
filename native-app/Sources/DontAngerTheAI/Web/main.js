@@ -144,13 +144,19 @@ scene.add(rimLight);
 // ── Growth clip plane ──
 const growthClip = new THREE.Plane(new THREE.Vector3(0, -1, 0), PLANET_RADIUS);
 
+// ── World group (planet + village + tree — movable as a unit) ──
+const worldGroup = new THREE.Group();
+worldGroup.position.set(0, -42, -62);
+scene.add(worldGroup);
+window._worldGroup = worldGroup;
+
 // ── Planet sphere (procedural fallback, may be replaced by GLB) ──
 const planetGeo = new THREE.SphereGeometry(PLANET_RADIUS, 64, 48);
 const planetMat = new THREE.MeshStandardMaterial({
     color: 0x2a5a1a, roughness: 0.9, metalness: 0.0
 });
 const planet = new THREE.Mesh(planetGeo, planetMat);
-scene.add(planet);
+worldGroup.add(planet);
 
 // Async: try to replace planet with GLB model
 (async () => {
@@ -159,8 +165,8 @@ scene.add(planet);
         // Scale planet to 2x PLANET_RADIUS diameter, then center
         normalizeModel(glb, PLANET_RADIUS * 2.4576 * 0.8);
         centerModel(glb);
-        scene.remove(planet);
-        scene.add(glb);
+        worldGroup.remove(planet);
+        worldGroup.add(glb);
         planetGeo.dispose();
         planetMat.dispose();
     }
@@ -230,7 +236,7 @@ function getIntroDeps() {
 function onIntroComplete() {
     const pending = consumePendingVillageUpdate();
     if (pending) {
-        applyVillageMood(scene, pending.mood, pending.population, pending.trend);
+        applyVillageMood(worldGroup, pending.mood, pending.population, pending.trend);
         setAttackMood(pending.mood);
     } else {
         if (window.webkit?.messageHandlers?.requestVillageUpdate) {
@@ -261,7 +267,7 @@ window.initTreeWords = function(wordData, uniqueWords, totalWords, strata, villa
 
     const wasAlreadyDone = getPhase() === 'done';
 
-    generateTree(scene, camera, controls, 42, uniqueWords, strata);
+    generateTree(worldGroup, camera, controls, 42, uniqueWords, strata);
 
     const { leafPositions, leafStartPerLevel, maxTreeY, treeGroup } = getTreeState();
     assignWordsToLeaves(wordData, leafPositions, leafStartPerLevel);
@@ -270,7 +276,7 @@ window.initTreeWords = function(wordData, uniqueWords, totalWords, strata, villa
     // Create village objects (hidden) for time-lapse growth during intro
     if (!isVillageInitialized()) {
         const isIntro = getPhase() === 'waiting';
-        initVillage(scene, totalWords, isIntro, villageState).then(() => {
+        initVillage(worldGroup, totalWords, isIntro, villageState, scene).then(() => {
             const counts = getVillageCounts();
             setIntroTargets(counts.villagers, counts.buildings);
         });
@@ -298,14 +304,14 @@ window.updateTreeData = function(health, season, streak, growth) {
 };
 
 window.updateVillageMood = function(mood, population, trend, totalWords) {
-    applyVillageMood(scene, mood, population, trend, totalWords);
+    applyVillageMood(worldGroup, mood, population, trend, totalWords);
     setAttackMood(mood);
 };
 
 window.updateVillageState = function(jsonStr) {
     try {
         const data = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr;
-        applyVillageState(scene, data);
+        applyVillageState(worldGroup, data);
     } catch (e) {
         // Invalid JSON, ignore
     }
@@ -332,7 +338,7 @@ window.updateNebula = function(entries) {
 // Fallback: if no data arrives in 8 seconds, generate a default tree
 setTimeout(() => {
     if (getPhase() === 'waiting') {
-        generateTree(scene, camera, controls, 42, 50, []);
+        generateTree(worldGroup, camera, controls, 42, 50, []);
         skipToDone(getIntroDeps());
         onIntroComplete();
     }
@@ -438,6 +444,36 @@ window.addEventListener('resize', () => {
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
 });
+
+// ── World Position Debug Panel ──
+const wpPanel = document.createElement('div');
+wpPanel.style.cssText = 'position:fixed;top:10px;left:10px;background:rgba(0,0,0,0.85);color:#fff;padding:12px;border-radius:8px;font:12px monospace;z-index:9999;min-width:200px;';
+wpPanel.innerHTML = '<div style="font-size:14px;margin-bottom:8px;font-weight:bold">World Position</div>';
+[
+    { axis: 'x', label: 'X', min: -500, max: 500, step: 1, val: 0 },
+    { axis: 'y', label: 'Y', min: -500, max: 500, step: 1, val: -42 },
+    { axis: 'z', label: 'Z', min: -500, max: 500, step: 1, val: -62 },
+].forEach(s => {
+    const row = document.createElement('div');
+    row.style.cssText = 'margin:6px 0;';
+    const valSpan = document.createElement('span');
+    valSpan.textContent = s.val;
+    valSpan.style.cssText = 'float:right;width:40px;text-align:right;';
+    const input = document.createElement('input');
+    input.type = 'range';
+    input.min = s.min; input.max = s.max; input.step = s.step; input.value = s.val;
+    input.style.cssText = 'width:120px;vertical-align:middle;';
+    input.addEventListener('input', () => {
+        const v = parseFloat(input.value);
+        worldGroup.position[s.axis] = v;
+        valSpan.textContent = v.toFixed(1);
+    });
+    row.innerHTML = `<div style="margin-bottom:2px">${s.label}</div>`;
+    row.appendChild(input);
+    row.appendChild(valSpan);
+    wpPanel.appendChild(row);
+});
+document.body.appendChild(wpPanel);
 
 // ── Signal ready to Swift ──
 if (window.webkit?.messageHandlers?.treeReady) {

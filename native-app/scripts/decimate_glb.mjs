@@ -11,7 +11,7 @@
  */
 
 import { NodeIO } from '@gltf-transform/core';
-import { simplify, weld, normals } from '@gltf-transform/functions';
+import { simplify, weld } from '@gltf-transform/functions';
 import { MeshoptSimplifier } from 'meshoptimizer';
 import { readdirSync, statSync } from 'fs';
 import { join, dirname } from 'path';
@@ -54,7 +54,6 @@ async function decimateFile(filepath) {
     await MeshoptSimplifier.ready;
     await document.transform(
         weld({ tolerance: 0.0001 }),
-        normals({ overwrite: true }),
         simplify({ simplifier: MeshoptSimplifier, ratio, error: 0.01 })
     );
 

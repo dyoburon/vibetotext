@@ -21,7 +21,7 @@ const scene = new THREE.Scene();
 scene.fog = new THREE.FogExp2(0x88aabb, 0.002);
 
 const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 2000);
-camera.position.set(-31.8, 17.2, 96.6);
+camera.position.set(-56.6, 34.6, 129.8);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -50,7 +50,7 @@ window._camera = camera;
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = false;
 controls.autoRotate = false; // we handle rotation manually around the planet
-controls.target.set(-9.4, 18.4, 31.8);
+controls.target.set(-31.4, 27.1, 66.5);
 controls.minDistance = 0;
 controls.maxDistance = Infinity;
 controls.maxPolarAngle = Math.PI;
@@ -382,10 +382,10 @@ function animate() {
 
         // Sky color shifts: warm orange-pink at dawn/dusk, dark blue at night
         const nightBlue = new THREE.Color(0x0a1533);
-        const dayBlue = new THREE.Color(0x1a55aa);
+        const dayBlue = new THREE.Color(0x154488);
         deps.skyUniforms.topColor.value.copy(nightBlue).lerp(dayBlue, dayFactor);
         const nightMid = new THREE.Color(0x112244);
-        const dayMid = new THREE.Color(0x4499dd);
+        const dayMid = new THREE.Color(0x367ab1);
         deps.skyUniforms.midColor.value.copy(nightMid).lerp(dayMid, dayFactor);
 
         // Stars visible at night
@@ -425,17 +425,17 @@ function animate() {
         // Day/night cycle — full loop every 15 seconds
         const dayNight = Math.sin(t * Math.PI * 2 / 15); // -1 to 1
         const dayFactor = dayNight * 0.5 + 0.5; // 0 (night) to 1 (day)
-        skyUniforms.brightness.value = 0.3 + dayFactor * 0.7;
+        skyUniforms.brightness.value = 0.3 + dayFactor * 0.56;
         dirLight.intensity = TARGET_DIR * (0.15 + dayFactor * 0.85);
         ambient.intensity = TARGET_AMB * (0.3 + dayFactor * 0.7);
         hemiLight.intensity = TARGET_HEMI * (0.3 + dayFactor * 0.7);
         rimLight.intensity = TARGET_RIM * (0.3 + dayFactor * 0.7);
 
         const nightBlue = new THREE.Color(0x0a1533);
-        const dayBlue = new THREE.Color(0x1a55aa);
+        const dayBlue = new THREE.Color(0x154488);
         skyUniforms.topColor.value.copy(nightBlue).lerp(dayBlue, dayFactor);
         const nightMid = new THREE.Color(0x112244);
-        const dayMid = new THREE.Color(0x4499dd);
+        const dayMid = new THREE.Color(0x367ab1);
         skyUniforms.midColor.value.copy(nightMid).lerp(dayMid, dayFactor);
 
         starMat.opacity = (1 - dayFactor) * 0.3 + 0.05;

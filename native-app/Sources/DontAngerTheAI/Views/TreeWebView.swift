@@ -159,8 +159,8 @@ final class TreeWebViewStore: NSObject, ObservableObject, WKScriptMessageHandler
 
             let deltaY = event.scrollingDeltaY
             self.scrollLogCount += 1
-            if self.scrollLogCount <= 10 || self.scrollLogCount % 100 == 0 {
-                scrollLog("SCROLL #\(self.scrollLogCount) deltaY=\(deltaY) — calling applyZoom")
+            if self.scrollLogCount <= 20 || self.scrollLogCount % 50 == 0 {
+                scrollLog("SCROLL #\(self.scrollLogCount) deltaY=\(String(format: "%.2f", deltaY)) phase=\(event.phase.rawValue) momentum=\(event.momentumPhase.rawValue)")
             }
             webView.evaluateJavaScript("window.applyZoom(\(deltaY))", completionHandler: nil)
             return nil

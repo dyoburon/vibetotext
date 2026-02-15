@@ -8,7 +8,7 @@ import { initVillage, updateVillageMood as applyVillageMood, animateVillage, isI
 import { animateSkyEntity } from './sky-entity.js';
 import { initAttackController, updateAttackController, setAttackMood, skipAttackCinematic, isAttackActive } from './attack-controller.js';
 import { loadModel, normalizeModel, centerModel, preloadAllModels } from './model-loader.js';
-import { createNebula, animateNebula, isNebulaInitialized, updateEntries as updateNebulaEntries } from './nebula.js';
+import { createNebula, animateNebula, isNebulaInitialized, updateEntries as updateNebulaEntries, getNebulaGroup } from './nebula.js';
 import { updateWordPulses } from './words.js';
 import { preloadVillageModels } from './village.js';
 import './shader-debug.js';
@@ -21,7 +21,7 @@ const scene = new THREE.Scene();
 scene.fog = new THREE.FogExp2(0x88aabb, 0.002);
 
 const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 2000);
-camera.position.set(20, 14, 28);
+camera.position.set(46.4, -18.9, 82.6);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -48,25 +48,23 @@ window._camera = camera;
 
 // ── Controls ──
 const controls = new OrbitControls(camera, renderer.domElement);
-controls.enableDamping = true;
-controls.dampingFactor = 0.05;
-controls.autoRotate = true;
-controls.autoRotateSpeed = 0.25;
-controls.target.set(0, PLANET_RADIUS * 0.3, 0);
-controls.minDistance = 3;
+controls.enableDamping = false;
+controls.autoRotate = false; // we handle rotation manually around the planet
+controls.target.set(30.9, -3.5, 17.5);
+controls.minDistance = 0;
 controls.maxDistance = Infinity;
 controls.maxPolarAngle = Math.PI;
-controls.zoomSpeed = 1.2;
+controls.enableZoom = false;
+controls.screenSpacePanning = true;
 
-// Direct zoom function called from Swift — bypasses synthetic events entirely
-// Uses multiplicative scaling so zoom feels consistent at any distance
+// Dolly zoom via Swift scroll intercept
+// Translates both camera AND target along view direction — orbit radius never changes
 window.applyZoom = function(deltaY) {
-    const dir = camera.position.clone().sub(controls.target).normalize();
-    const dist = camera.position.distanceTo(controls.target);
-    const factor = Math.pow(0.998, deltaY); // multiplicative: works at any distance
-    const newDist = Math.max(controls.minDistance, Math.min(500, dist * factor));
-    camera.position.copy(controls.target).addScaledVector(dir, newDist);
-    controls.update();
+    const forward = new THREE.Vector3();
+    camera.getWorldDirection(forward); // unit vector pointing where camera looks
+    const dolly = forward.multiplyScalar(deltaY * 0.3);
+    camera.position.add(dolly);
+    controls.target.add(dolly);
 };
 
 // ── Sky ──
@@ -354,6 +352,14 @@ function animate() {
     requestAnimationFrame(animate);
     const dt = Math.min(clock.getDelta(), 0.05);
     const t = clock.getElapsedTime();
+
+    // Manual auto-rotation anchored to the planet center (not controls.target)
+    const planetCenter = worldGroup.position;
+    const rotAngle = 2 * Math.PI / 60 * 0.125 * dt; // half speed
+    const rotAxis = new THREE.Vector3(0, 1, 0);
+    camera.position.sub(planetCenter).applyAxisAngle(rotAxis, rotAngle).add(planetCenter);
+    controls.target.sub(planetCenter).applyAxisAngle(rotAxis, rotAngle).add(planetCenter);
+
     controls.update();
 
     const phase = getPhase();
@@ -474,6 +480,56 @@ wpPanel.innerHTML = '<div style="font-size:14px;margin-bottom:8px;font-weight:bo
     wpPanel.appendChild(row);
 });
 document.body.appendChild(wpPanel);
+
+// ── Nebula Position Debug Panel ──
+const nbPanel = document.createElement('div');
+nbPanel.style.cssText = 'position:fixed;top:10px;left:230px;background:rgba(0,0,0,0.85);color:#fff;padding:12px;border-radius:8px;font:12px monospace;z-index:9999;min-width:200px;';
+nbPanel.innerHTML = '<div style="font-size:14px;margin-bottom:8px;font-weight:bold">Nebula Position</div>';
+[
+    { axis: 'x', label: 'X', min: -500, max: 500, step: 1, val: 73 },
+    { axis: 'y', label: 'Y', min: -500, max: 500, step: 1, val: -10 },
+    { axis: 'z', label: 'Z', min: -500, max: 500, step: 1, val: -21 },
+].forEach(s => {
+    const row = document.createElement('div');
+    row.style.cssText = 'margin:6px 0;';
+    const valSpan = document.createElement('span');
+    valSpan.textContent = s.val;
+    valSpan.style.cssText = 'float:right;width:40px;text-align:right;';
+    const input = document.createElement('input');
+    input.type = 'range';
+    input.min = s.min; input.max = s.max; input.step = s.step; input.value = s.val;
+    input.style.cssText = 'width:120px;vertical-align:middle;';
+    input.addEventListener('input', () => {
+        const ng = getNebulaGroup();
+        if (!ng) return;
+        const v = parseFloat(input.value);
+        ng.position[s.axis] = v;
+        valSpan.textContent = v.toFixed(1);
+    });
+    row.innerHTML = `<div style="margin-bottom:2px">${s.label}</div>`;
+    row.appendChild(input);
+    row.appendChild(valSpan);
+    nbPanel.appendChild(row);
+});
+document.body.appendChild(nbPanel);
+
+// ── Camera Coordinates Debug Panel (read-only) ──
+const camPanel = document.createElement('div');
+camPanel.style.cssText = 'position:fixed;bottom:10px;left:10px;background:rgba(0,0,0,0.85);color:#fff;padding:12px;border-radius:8px;font:12px monospace;z-index:9999;min-width:200px;';
+camPanel.innerHTML = '<div style="font-size:14px;margin-bottom:8px;font-weight:bold">Camera</div>';
+const camPos = document.createElement('div');
+camPos.style.cssText = 'margin:4px 0;';
+const camTgt = document.createElement('div');
+camTgt.style.cssText = 'margin:4px 0;';
+camPanel.appendChild(camPos);
+camPanel.appendChild(camTgt);
+document.body.appendChild(camPanel);
+setInterval(() => {
+    const p = camera.position;
+    const tg = controls.target;
+    camPos.textContent = `pos: ${p.x.toFixed(1)}, ${p.y.toFixed(1)}, ${p.z.toFixed(1)}`;
+    camTgt.textContent = `target: ${tg.x.toFixed(1)}, ${tg.y.toFixed(1)}, ${tg.z.toFixed(1)}`;
+}, 200);
 
 // ── Signal ready to Swift ──
 if (window.webkit?.messageHandlers?.treeReady) {

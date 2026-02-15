@@ -52,7 +52,7 @@ export function generateTree(scene, camera, controls, seed, uniqueWords, strata)
 
     // Create tree group positioned at the north pole of the planet
     treeGroup = new THREE.Group();
-    treeGroup.position.set(0, PLANET_RADIUS, 0);
+    treeGroup.position.set(0, PLANET_RADIUS - 3, 0);
 
     // ── Scale with word count ──
     let trunkLevels, segHeight, baseRadius;

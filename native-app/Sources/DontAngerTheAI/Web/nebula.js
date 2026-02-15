@@ -19,7 +19,7 @@ let activeSentenceIdx = -1;  // index into sentenceSprites for current sentence 
 let seenTexts = new Set();   // track which entries we've already added
 
 // ── Constants ──
-const NEBULA_CENTER = new THREE.Vector3(70, 25, -15);
+const NEBULA_CENTER = new THREE.Vector3(73, -10, -21);
 const MAX_SENTENCES = 150;
 const DUST_COUNT = 800;
 const MIGRATION_INTERVAL = 2.5; // seconds between word migrations
@@ -345,6 +345,7 @@ function migrateNextWord() {
 // ── Public API ──
 
 export function isNebulaInitialized() { return initialized; }
+export function getNebulaGroup() { return nebulaGroup; }
 
 export function createNebula(sceneRef, entries) {
     if (initialized) return;
@@ -353,6 +354,7 @@ export function createNebula(sceneRef, entries) {
     rng = mulberry32(54321);
     nebulaGroup = new THREE.Group();
     nebulaGroup.position.copy(NEBULA_CENTER);
+    nebulaGroup.scale.set(2, 2, 2);
 
     // --- Layer 1: Background glow ---
     glowMat = new THREE.ShaderMaterial({

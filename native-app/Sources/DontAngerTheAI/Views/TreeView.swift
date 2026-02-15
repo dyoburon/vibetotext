@@ -107,6 +107,11 @@ struct TreeContainerView: View {
                         totalSentimentCount: appState.treeData.totalSentimentCount
                     )
                     TreeStatItem(
+                        label: "Queue",
+                        value: "\(appState.nebulaWordCount)",
+                        color: Color(red: 0.8, green: 0.6, blue: 1.0)
+                    )
+                    TreeStatItem(
                         label: "Pop.",
                         value: "\(appState.villageState?.villagers.filter(\.alive).count ?? 0)",
                         color: .white
@@ -137,6 +142,13 @@ struct TreeContainerView: View {
             )
         }
         .background(.black)
+        .onAppear {
+            webViewStore.onNebulaQueueUpdate = { [weak appState] (count: Int) in
+                DispatchQueue.main.async {
+                    appState?.nebulaWordCount = count
+                }
+            }
+        }
     }
 
     private func healthColor(_ health: Float) -> Color {

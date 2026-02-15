@@ -10,7 +10,8 @@
       "WebFetch(domain:platform.tripo3d.ai)",
       "WebFetch(domain:apidog.com)",
       "WebFetch(domain:github.com)",
-      "Bash(open:*)"
+      "Bash(open:*)",
+      "WebFetch(domain:antongubarenko.substack.com)"
     ]
   }
 }

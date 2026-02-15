@@ -38,6 +38,7 @@ final class TreeWebViewStore: NSObject, ObservableObject, WKScriptMessageHandler
     var currentTotalWords: Int = 0
     var currentVillageStateJSON: String = "{}"
     var onVillagerKilled: ((Int, String, String) -> Void)?
+    var onNebulaQueueUpdate: ((Int) -> Void)?
 
     override init() {
         super.init()
@@ -52,6 +53,7 @@ final class TreeWebViewStore: NSObject, ObservableObject, WKScriptMessageHandler
         config.userContentController.add(self, name: "requestVillageUpdate")
         config.userContentController.add(self, name: "villagerKilled")
         config.userContentController.add(self, name: "jsLog")
+        config.userContentController.add(self, name: "nebulaQueue")
 
         let consoleScript = WKUserScript(source: """
             (function(){
@@ -108,6 +110,10 @@ final class TreeWebViewStore: NSObject, ObservableObject, WKScriptMessageHandler
         } else if message.name == "jsLog" {
             if let msg = message.body as? String {
                 scrollLog("JS: \(msg)")
+            }
+        } else if message.name == "nebulaQueue" {
+            if let count = message.body as? Int {
+                onNebulaQueueUpdate?(count)
             }
         } else if message.name == "villagerKilled" {
             if let jsonStr = message.body as? String,

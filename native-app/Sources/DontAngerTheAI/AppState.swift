@@ -22,6 +22,7 @@ final class AppState: ObservableObject {
 
     // Nebula data (recent transcription texts)
     @Published var nebulaEntriesJSON: String = "[]"
+    @Published var nebulaWordCount: Int = 0
 
     // Daily sentiment aggregates for intro graph
     @Published var dailySentimentJSON: String = "[]"
@@ -120,11 +121,13 @@ final class AppState: ObservableObject {
                 .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
 
             // Build nebula entries JSON (most recent 100 transcription texts with timestamps)
-            let recentEntries = entries.prefix(100).map { entry -> [String: Any] in
+            let nebulaSlice = entries.prefix(100)
+            let recentEntries = nebulaSlice.map { entry -> [String: Any] in
                 ["text": entry.text, "mode": entry.mode, "timestamp": entry.timestamp.timeIntervalSince1970]
             }
             let nebulaEntriesJSON = (try? JSONSerialization.data(withJSONObject: recentEntries))
                 .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
+            // nebulaWordCount is updated live from JS via nebulaQueue message handler
 
             // Build daily sentiment aggregates (up to 365 days)
             let dayFormatter = DateFormatter()

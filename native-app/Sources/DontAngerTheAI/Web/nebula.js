@@ -338,6 +338,7 @@ function migrateNextWord() {
             activeSentenceIdx = -1;
         }
 
+        postQueueCount();
         return;
     }
 }
@@ -346,6 +347,20 @@ function migrateNextWord() {
 
 export function isNebulaInitialized() { return initialized; }
 export function getNebulaGroup() { return nebulaGroup; }
+
+export function getPendingWordCount() {
+    let count = 0;
+    for (const entry of sentenceSprites) {
+        count += entry.words.length;
+    }
+    return count;
+}
+
+function postQueueCount() {
+    if (window.webkit?.messageHandlers?.nebulaQueue) {
+        window.webkit.messageHandlers.nebulaQueue.postMessage(getPendingWordCount());
+    }
+}
 
 export function createNebula(sceneRef, entries) {
     if (initialized) return;
@@ -550,7 +565,10 @@ export function addEntries(entries) {
         }
     }
 
-    if (added > 0) console.log(`[nebula] added ${added} new entries as sprites`);
+    if (added > 0) {
+        console.log(`[nebula] added ${added} new entries as sprites`);
+        postQueueCount();
+    }
     if (isFirstLoad) {
         // Mark ALL original entries as seen so they don't re-appear on later updateNebula calls
         for (const entry of entries) {

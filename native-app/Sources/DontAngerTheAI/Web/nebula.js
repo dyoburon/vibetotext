@@ -275,6 +275,25 @@ function bezierPoint(p0, p1, p2, p3, t) {
         .addScaledVector(p3, t * t * t);
 }
 
+// ── Silent drain: remove a word without flying animation (for catch-up) ──
+function silentDrainWord() {
+    if (sentenceSprites.length === 0) return false;
+
+    // Find any sentence with words remaining
+    for (let i = 0; i < sentenceSprites.length; i++) {
+        if (sentenceSprites[i].words.length > 0) {
+            sentenceSprites[i].words.shift();
+            if (sentenceSprites[i].words.length > 0) {
+                reRenderSentence(sentenceSprites[i]);
+            } else {
+                sentenceSprites[i].sprite.userData.fadeOut = true;
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
 // ── Migration: drain one sentence at a time, word by word in order ──
 function migrateNextWord() {
     if (sentenceSprites.length === 0) return;
@@ -423,9 +442,9 @@ export function createNebula(sceneRef, entries) {
 }
 
 // Simulate drain that would have happened while app was off.
-// Entries are sorted oldest-first. Words drain at 1 per MIGRATION_INTERVAL seconds.
-// We calculate how many total words would have been drained by now and skip
-// the oldest entries/words accordingly.
+// FIFO queue: entries arrive at their timestamp, words drain at 1 per MIGRATION_INTERVAL.
+// We walk forward through time — as each entry arrives its words join the queue,
+// and between entries the queue drains. The queue can never go below 0.
 function simulateDrain(entries) {
     if (!entries.length) return [];
 
@@ -438,39 +457,59 @@ function simulateDrain(entries) {
 
     if (!sorted.length) return entries; // no timestamps, return as-is
 
-    // Calculate total words drained since oldest entry
-    // Drain rate: 1 word per MIGRATION_INTERVAL seconds globally
-    const oldestTime = sorted[0].timestamp;
-    const elapsed = now - oldestTime;
-    const totalWordsDrained = Math.floor(elapsed / MIGRATION_INTERVAL);
+    // Build list with word arrays and counts
+    const queue = sorted.map(e => {
+        const words = e.text.trim().split(/\s+/).filter(w => w.length > 0);
+        return { entry: e, words, totalWords: words.length, wordsRemaining: words.length };
+    });
 
-    // Walk through entries oldest-first, "draining" words
-    let wordsDrained = 0;
-    const result = [];
+    // Walk forward through time, simulating the FIFO drain
+    let lastTime = queue[0].entry.timestamp;
+    let drainDebt = 0; // fractional words to drain
 
-    for (const entry of sorted) {
-        const words = entry.text.trim().split(/\s+/).filter(w => w.length > 0);
-        const entryWordCount = words.length;
+    for (let i = 0; i < queue.length; i++) {
+        const arrivalTime = queue[i].entry.timestamp;
 
-        if (wordsDrained + entryWordCount <= totalWordsDrained) {
-            // This entire entry has been drained — skip it
-            wordsDrained += entryWordCount;
-            continue;
+        // Drain words that would have left the queue between lastTime and this entry's arrival
+        const gap = arrivalTime - lastTime;
+        if (gap > 0) {
+            drainDebt += gap / MIGRATION_INTERVAL;
+            // Drain from oldest entries first (indices 0..i-1 are already in queue)
+            for (let j = 0; j < i && drainDebt >= 1; j++) {
+                const canDrain = Math.min(queue[j].wordsRemaining, Math.floor(drainDebt));
+                queue[j].wordsRemaining -= canDrain;
+                drainDebt -= canDrain;
+            }
         }
 
-        if (wordsDrained < totalWordsDrained) {
-            // Partially drained — remove some words from the start
-            const wordsToRemove = totalWordsDrained - wordsDrained;
-            const remainingWords = words.slice(wordsToRemove);
-            wordsDrained = totalWordsDrained;
-            result.push({ ...entry, text: remainingWords.join(' ') });
-        } else {
-            // Not yet drained — include fully
-            result.push(entry);
+        lastTime = arrivalTime;
+    }
+
+    // Drain from last entry's timestamp until now
+    const finalGap = now - lastTime;
+    if (finalGap > 0) {
+        drainDebt += finalGap / MIGRATION_INTERVAL;
+        for (let j = 0; j < queue.length && drainDebt >= 1; j++) {
+            const canDrain = Math.min(queue[j].wordsRemaining, Math.floor(drainDebt));
+            queue[j].wordsRemaining -= canDrain;
+            drainDebt -= canDrain;
         }
     }
 
-    console.log(`[nebula] simulateDrain: ${entries.length} entries, elapsed=${Math.round(elapsed)}s, drained=${totalWordsDrained} words → ${result.length} remaining`);
+    // Build result with remaining words
+    const result = [];
+    let totalDrained = 0;
+    for (const q of queue) {
+        totalDrained += q.totalWords - q.wordsRemaining;
+        if (q.wordsRemaining <= 0) continue;
+        // Keep only the last N words (the ones that haven't drained yet)
+        const remainingWords = q.words.slice(q.totalWords - q.wordsRemaining);
+        result.push({ ...q.entry, text: remainingWords.join(' ') });
+    }
+
+    const totalWords = queue.reduce((s, q) => s + q.totalWords, 0);
+    const remaining = queue.reduce((s, q) => s + q.wordsRemaining, 0);
+    console.log(`[nebula] simulateDrain: ${entries.length} entries, totalWords=${totalWords}, drained=${totalDrained}, remaining=${remaining} → ${result.length} entries`);
     return result;
 }
 
@@ -586,8 +625,29 @@ export function updateEntries(allEntries) {
     addEntries(allEntries);
 }
 
+let lastRealTime = 0;
+
 export function animateNebula(dt, t, cameraPosition) {
     if (!nebulaGroup) return;
+
+    // Catch-up drain: detect time gaps from window being hidden
+    const now = Date.now() / 1000;
+    if (lastRealTime > 0) {
+        const realElapsed = now - lastRealTime;
+        if (realElapsed > 5) {
+            const wordsToDrain = Math.floor(realElapsed / MIGRATION_INTERVAL);
+            let drained = 0;
+            for (let i = 0; i < wordsToDrain; i++) {
+                if (!silentDrainWord()) break;
+                drained++;
+            }
+            if (drained > 0) {
+                console.log(`[nebula] catch-up drain: ${drained} words silently removed (gap=${Math.round(realElapsed)}s)`);
+                postQueueCount();
+            }
+        }
+    }
+    lastRealTime = now;
 
     // Fade in over 2 seconds
     if (fadeIn < 1) {

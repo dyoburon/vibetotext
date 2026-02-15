@@ -21,7 +21,7 @@ const scene = new THREE.Scene();
 scene.fog = new THREE.FogExp2(0x88aabb, 0.002);
 
 const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 2000);
-camera.position.set(5.2, 14.6, 83.5);
+camera.position.set(-31.8, 17.2, 96.6);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -50,7 +50,7 @@ window._camera = camera;
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = false;
 controls.autoRotate = false; // we handle rotation manually around the planet
-controls.target.set(5.1, 16.4, 14.9);
+controls.target.set(-9.4, 18.4, 31.8);
 controls.minDistance = 0;
 controls.maxDistance = Infinity;
 controls.maxPolarAngle = Math.PI;
@@ -355,12 +355,9 @@ function animate() {
     const dt = Math.min(clock.getDelta(), 0.05);
     const t = clock.getElapsedTime();
 
-    // Manual auto-rotation anchored to the planet center (not controls.target)
-    const planetCenter = worldGroup.position;
-    const rotAngle = 2 * Math.PI / 60 * 0.125 * dt; // half speed
-    const rotAxis = new THREE.Vector3(0, 1, 0);
-    camera.position.sub(planetCenter).applyAxisAngle(rotAxis, rotAngle).add(planetCenter);
-    controls.target.sub(planetCenter).applyAxisAngle(rotAxis, rotAngle).add(planetCenter);
+    // Rotate the world instead of the camera — same visual illusion, camera stays put
+    const rotAngle = 2 * Math.PI / 60 * 0.25 * dt;
+    worldGroup.rotation.y -= rotAngle;
 
     controls.update();
 

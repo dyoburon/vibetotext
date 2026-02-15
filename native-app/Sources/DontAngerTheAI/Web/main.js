@@ -473,7 +473,7 @@ window.addEventListener('resize', () => {
 
 // ── World Position Debug Panel ──
 const wpPanel = document.createElement('div');
-wpPanel.style.cssText = 'position:fixed;top:10px;left:10px;background:rgba(0,0,0,0.85);color:#fff;padding:12px;border-radius:8px;font:12px monospace;z-index:9999;min-width:200px;';
+wpPanel.style.cssText = 'position:fixed;top:10px;left:10px;background:rgba(0,0,0,0.85);color:#fff;padding:12px;border-radius:8px;font:12px monospace;z-index:9999;min-width:200px;display:none;';
 wpPanel.innerHTML = '<div style="font-size:14px;margin-bottom:8px;font-weight:bold">World Position</div>';
 [
     { axis: 'x', label: 'X', min: -500, max: 500, step: 1, val: 0 },
@@ -503,7 +503,7 @@ document.body.appendChild(wpPanel);
 
 // ── Nebula Position Debug Panel ──
 const nbPanel = document.createElement('div');
-nbPanel.style.cssText = 'position:fixed;top:10px;left:230px;background:rgba(0,0,0,0.85);color:#fff;padding:12px;border-radius:8px;font:12px monospace;z-index:9999;min-width:200px;';
+nbPanel.style.cssText = 'position:fixed;top:10px;left:230px;background:rgba(0,0,0,0.85);color:#fff;padding:12px;border-radius:8px;font:12px monospace;z-index:9999;min-width:200px;display:none;';
 nbPanel.innerHTML = '<div style="font-size:14px;margin-bottom:8px;font-weight:bold">Nebula Position</div>';
 [
     { axis: 'x', label: 'X', min: -500, max: 500, step: 1, val: 73 },
@@ -535,7 +535,7 @@ document.body.appendChild(nbPanel);
 
 // ── Camera Coordinates Debug Panel (read-only) ──
 const camPanel = document.createElement('div');
-camPanel.style.cssText = 'position:fixed;bottom:10px;left:10px;background:rgba(0,0,0,0.85);color:#fff;padding:12px;border-radius:8px;font:12px monospace;z-index:9999;min-width:200px;';
+camPanel.style.cssText = 'position:fixed;bottom:10px;left:10px;background:rgba(0,0,0,0.85);color:#fff;padding:12px;border-radius:8px;font:12px monospace;z-index:9999;min-width:200px;display:none;';
 camPanel.innerHTML = '<div style="font-size:14px;margin-bottom:8px;font-weight:bold">Camera</div>';
 const camPos = document.createElement('div');
 camPos.style.cssText = 'margin:4px 0;';

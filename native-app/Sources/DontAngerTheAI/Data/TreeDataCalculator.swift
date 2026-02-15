@@ -28,12 +28,13 @@ struct TreeData {
 
     // Mood breakdown: top positive and negative contributors
     let moodBreakdown: [MoodEntry]
+    let totalSentimentCount: Int  // total entries with sentiment today (for influence calc)
 
     static let placeholder = TreeData(
         health: 0.85, streak: 0, streakTier: 0, season: 0.5, growthProgress: 0.0,
         healthLabel: "—", seasonLabel: "—", streakLabel: "—", growthLabel: "—",
         mood: 0.0, moodLabel: "—", population: 0, recentTrend: 0.0,
-        moodBreakdown: []
+        moodBreakdown: [], totalSentimentCount: 0
     )
 }
 
@@ -44,7 +45,7 @@ enum TreeDataCalculator {
                 health: 0.3, streak: 0, streakTier: 0, season: 0.0, growthProgress: 0.0,
                 healthLabel: "30%", seasonLabel: "Winter", streakLabel: "None", growthLabel: "0%",
                 mood: 0.0, moodLabel: "Neutral", population: 0, recentTrend: 0.0,
-                moodBreakdown: []
+                moodBreakdown: [], totalSentimentCount: 0
             )
         }
 
@@ -148,13 +149,9 @@ enum TreeDataCalculator {
         let moodMultiplier = 0.3 + 0.7 * Double((mood + 1.0) / 2.0)
         let population = max(1, Int(Double(basePop) * moodMultiplier))
 
-        // ── Mood label ──
-        let moodLabel: String
-        if mood > 0.5 { moodLabel = "Radiant" }
-        else if mood > 0.15 { moodLabel = "Warm" }
-        else if mood > -0.15 { moodLabel = "Neutral" }
-        else if mood > -0.5 { moodLabel = "Cold" }
-        else { moodLabel = "Hostile" }
+        // ── Mood label: score out of 100 ──
+        let moodScore = Int((mood + 1) / 2 * 100)
+        let moodLabel = "\(moodScore)"
 
         // ── Mood breakdown: today's top positive & negative contributors ──
         var moodEntries: [MoodEntry] = []
@@ -182,7 +179,8 @@ enum TreeDataCalculator {
             moodLabel: moodLabel,
             population: population,
             recentTrend: recentTrend,
-            moodBreakdown: moodBreakdown
+            moodBreakdown: moodBreakdown,
+            totalSentimentCount: todaySentimentCount
         )
     }
 }

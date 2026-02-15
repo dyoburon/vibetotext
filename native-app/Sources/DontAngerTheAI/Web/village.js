@@ -877,7 +877,7 @@ export async function initVillage(scene, totalWords, startHidden, stateData, roo
 
             // Debug slider panel
             const panel = document.createElement('div');
-            panel.style.cssText = 'position:fixed;top:10px;right:10px;background:rgba(0,0,0,0.85);color:#fff;padding:12px;border-radius:8px;font:12px monospace;z-index:9999;min-width:220px;';
+            panel.style.cssText = 'position:fixed;top:10px;right:10px;background:rgba(0,0,0,0.85);color:#fff;padding:12px;border-radius:8px;font:12px monospace;z-index:9999;min-width:220px;display:none;';
             panel.innerHTML = '<div style="font-size:14px;margin-bottom:8px;font-weight:bold">Cosmic Debug</div>';
             const sliders = [
                 { key: 'uEdgeWidth', label: 'Edge Width', min: 0, max: 2, step: 0.01, val: 0.66 },

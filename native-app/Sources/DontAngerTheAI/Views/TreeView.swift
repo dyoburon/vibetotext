@@ -103,7 +103,8 @@ struct TreeContainerView: View {
                         value: appState.treeData.moodLabel,
                         color: moodColor(appState.treeData.mood),
                         mood: appState.treeData.mood,
-                        breakdown: appState.treeData.moodBreakdown
+                        breakdown: appState.treeData.moodBreakdown,
+                        totalSentimentCount: appState.treeData.totalSentimentCount
                     )
                     TreeStatItem(
                         label: "Pop.",
@@ -181,6 +182,7 @@ private struct MoodStatItem: View {
     let color: Color
     let mood: Float
     let breakdown: [MoodEntry]
+    let totalSentimentCount: Int
     @State private var showingDetail = false
 
     var body: some View {
@@ -203,15 +205,22 @@ private struct MoodStatItem: View {
             }
         }
         .sheet(isPresented: $showingDetail) {
-            MoodDetailView(mood: mood, breakdown: breakdown)
+            MoodDetailView(mood: mood, breakdown: breakdown, totalSentimentCount: totalSentimentCount)
         }
     }
+}
+
+private enum MoodSortOrder: String, CaseIterable {
+    case strongest = "Strongest"
+    case recent = "Most Recent"
 }
 
 private struct MoodDetailView: View {
     let mood: Float
     let breakdown: [MoodEntry]
+    let totalSentimentCount: Int
     @Environment(\.dismiss) private var dismiss
+    @State private var sortOrder: MoodSortOrder = .recent
 
     var body: some View {
         VStack(spacing: 0) {
@@ -221,10 +230,10 @@ private struct MoodDetailView: View {
                     Text("AI Mood Analysis")
                         .font(.system(size: 20, weight: .bold))
                     HStack(spacing: 8) {
-                        Text(moodLabel)
+                        Text(moodWord)
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundColor(moodColor)
-                        Text(String(format: "%.0f%%", (mood + 1) / 2 * 100))
+                        Text("\(Int((mood + 1) / 2 * 100))/100")
                             .font(.system(size: 14, weight: .semibold, design: .monospaced))
                             .foregroundColor(moodColor)
                         moodBar
@@ -237,6 +246,21 @@ private struct MoodDetailView: View {
             .padding(20)
             .background(Color(white: 0.12))
 
+            // Sort picker
+            HStack {
+                Spacer()
+                Picker("Sort", selection: $sortOrder) {
+                    ForEach(MoodSortOrder.allCases, id: \.self) { order in
+                        Text(order.rawValue).tag(order)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 220)
+                Spacer()
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 8)
+
             Divider()
 
             if breakdown.isEmpty {
@@ -246,34 +270,69 @@ private struct MoodDetailView: View {
                     .foregroundColor(.secondary)
                 Spacer()
             } else {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        let negatives = breakdown.filter { $0.sentiment < 0 }
-                            .sorted { abs($0.sentiment) * Double($0.weight) > abs($1.sentiment) * Double($1.weight) }
-                        let positives = breakdown.filter { $0.sentiment > 0 }
-                            .sorted { abs($0.sentiment) * Double($0.weight) > abs($1.sentiment) * Double($1.weight) }
-
-                        if !negatives.isEmpty {
-                            sectionView(
-                                title: "Made me upset (\(negatives.count))",
-                                titleColor: .red,
-                                entries: negatives
-                            )
-                        }
-
-                        if !positives.isEmpty {
-                            sectionView(
-                                title: "Made me happy (\(positives.count))",
-                                titleColor: .green,
-                                entries: positives
-                            )
-                        }
+                let negatives: [MoodEntry] = {
+                    let filtered = breakdown.filter { $0.sentiment < 0 }
+                    switch sortOrder {
+                    case .strongest:
+                        return filtered.sorted { abs($0.sentiment) * Double($0.weight) > abs($1.sentiment) * Double($1.weight) }
+                    case .recent:
+                        return filtered.sorted { $0.hoursAgo < $1.hoursAgo }
                     }
-                    .padding(20)
+                }()
+                let positives: [MoodEntry] = {
+                    let filtered = breakdown.filter { $0.sentiment > 0 }
+                    switch sortOrder {
+                    case .strongest:
+                        return filtered.sorted { abs($0.sentiment) * Double($0.weight) > abs($1.sentiment) * Double($1.weight) }
+                    case .recent:
+                        return filtered.sorted { $0.hoursAgo < $1.hoursAgo }
+                    }
+                }()
+
+                HStack(alignment: .top, spacing: 0) {
+                    // Left column: Made me upset
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 8) {
+                            if !negatives.isEmpty {
+                                sectionView(
+                                    title: "Made me upset (\(negatives.count))",
+                                    titleColor: .red,
+                                    entries: negatives
+                                )
+                            } else {
+                                Text("Nothing upset you today")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.secondary)
+                                    .padding(.top, 8)
+                            }
+                        }
+                        .padding(16)
+                    }
+
+                    Divider()
+
+                    // Right column: Made me happy
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 8) {
+                            if !positives.isEmpty {
+                                sectionView(
+                                    title: "Made me happy (\(positives.count))",
+                                    titleColor: .green,
+                                    entries: positives
+                                )
+                            } else {
+                                Text("Nothing made you happy yet")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.secondary)
+                                    .padding(.top, 8)
+                            }
+                        }
+                        .padding(16)
+                    }
                 }
             }
         }
-        .frame(width: 600, height: 500)
+        .frame(width: 900, height: 550)
         .preferredColorScheme(.dark)
     }
 
@@ -293,11 +352,20 @@ private struct MoodDetailView: View {
                         .frame(width: max(barWidth, 4), height: 14)
                         .padding(.top, 3)
 
-                    // Score
-                    Text(String(format: "%+.0f%%", entry.sentiment * 100))
-                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                        .foregroundColor(entry.sentiment > 0 ? .green : .red)
-                        .frame(width: 50, alignment: .trailing)
+                    // Score contribution (points added/subtracted from the top-line score)
+                    if totalSentimentCount > 0 {
+                        let contribution = entry.sentiment / Double(totalSentimentCount) * 50
+                        Text(String(format: "%+.2f", contribution))
+                            .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                            .foregroundColor(entry.sentiment > 0 ? .green : .red)
+                            .frame(width: 48, alignment: .trailing)
+                    }
+
+                    // Raw sentiment percentage
+                    Text(String(format: "%.0f%%", abs(entry.sentiment) * 100))
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(.secondary)
+                        .frame(width: 32, alignment: .trailing)
 
                     // Full text
                     Text(entry.text)
@@ -342,7 +410,7 @@ private struct MoodDetailView: View {
         return "\(Int(hours / 24))d"
     }
 
-    private var moodLabel: String {
+    private var moodWord: String {
         if mood > 0.5 { return "Radiant" }
         if mood > 0.15 { return "Warm" }
         if mood > -0.15 { return "Neutral" }

@@ -585,10 +585,27 @@ export async function initVillage(scene, totalWords, startHidden, stateData) {
 
             // Cosmic starfield shader
             const cosmicVert = /* glsl */`
+                uniform float uTime;
+                uniform float uSwayAmount;
                 varying vec3 vWorldPos;
                 varying vec3 vNormal;
                 void main() {
-                    vec4 wp = modelMatrix * vec4(position, 1.0);
+                    // Wind sway — direction drifts, intensity gusts
+                    float windAngle = uTime * 0.15 + sin(uTime * 0.07) * 1.5;
+                    vec3 windDir = normalize(vec3(cos(windAngle), 0.05, sin(windAngle)));
+
+                    // Gusting intensity — slow envelope with occasional surges
+                    float gust = 0.6 + 0.4 * sin(uTime * 0.3) * sin(uTime * 0.17 + 2.0);
+
+                    // Layered waves at different timescales
+                    float slow = sin(position.y * 0.15 + uTime * 0.4) * 0.03 * uSwayAmount;
+                    float med  = sin(position.x * 0.4 + uTime * 0.9) * 0.015 * uSwayAmount;
+                    float fast = sin((position.y + position.z) * 0.6 + uTime * 1.8) * 0.006 * uSwayAmount;
+
+                    float sway = (slow + med + fast) * gust;
+                    vec3 displaced = position + windDir * sway;
+
+                    vec4 wp = modelMatrix * vec4(displaced, 1.0);
                     vWorldPos = wp.xyz;
                     vNormal = normalize(normalMatrix * normal);
                     gl_Position = projectionMatrix * viewMatrix * wp;
@@ -597,6 +614,11 @@ export async function initVillage(scene, totalWords, startHidden, stateData) {
 
             const cosmicFrag = /* glsl */`
                 uniform float uTime;
+                uniform float uEdgeWidth;
+                uniform float uNoiseStrength;
+                uniform float uNoiseScale;
+                uniform float uBaseAlpha;
+                uniform float uSwayAmount;
                 varying vec3 vWorldPos;
                 varying vec3 vNormal;
 
@@ -665,22 +687,37 @@ export async function initVillage(scene, totalWords, startHidden, stateData) {
                     waveColor += blueCol * w4;
                     waveColor += purpleCol * w5;
 
-                    // Fresnel edge test with NaN guard
+                    // Wispy edges — noise dissolve at silhouette
                     vec3 V = normalize(cameraPosition - vWorldPos);
                     float nLen = length(vNormal);
                     vec3 N = nLen > 0.001 ? vNormal / nLen : vec3(0.0, 0.0, 1.0);
-                    float edge = pow(1.0 - abs(dot(N, V)), 2.0);
+                    float facing = abs(dot(N, V));
+
+                    // Animated noise that shifts over time
+                    float n1 = hash(vWorldPos * uNoiseScale + uTime * 0.2);
+                    float n2 = hash(vWorldPos * uNoiseScale * 2.0 - uTime * 0.15);
+                    float noise = (n1 + n2) * 0.5;
+
+                    // Dissolve: noise eats into the edge region
+                    float edgeFade = smoothstep(0.0, uEdgeWidth, facing + (noise - 0.5) * uNoiseStrength);
 
                     vec3 color = vec3(0.6, 0.85, 1.0) * s * 1.5 + waveColor;
-                    color += vec3(1.0, 0.0, 0.0) * edge;
-                    float alpha = s * 1.4 + waves * 0.7 + edge;
+                    float alpha = (s * 1.4 + waves * 0.7 + uBaseAlpha) * edgeFade;
                     alpha = clamp(alpha, 0.0, 1.0);
                     gl_FragColor = vec4(color, alpha);
                 }
             `;
 
+            const cosmicUniforms = {
+                uTime: { value: 0 },
+                uEdgeWidth: { value: 0.5 },
+                uNoiseStrength: { value: 0.7 },
+                uNoiseScale: { value: 1.5 },
+                uBaseAlpha: { value: 0.9 },
+                uSwayAmount: { value: 1.0 },
+            };
             const cosmicMaterial = new THREE.ShaderMaterial({
-                uniforms: { uTime: { value: 0 } },
+                uniforms: cosmicUniforms,
                 vertexShader: cosmicVert,
                 fragmentShader: cosmicFrag,
                 transparent: true,
@@ -689,34 +726,44 @@ export async function initVillage(scene, totalWords, startHidden, stateData) {
             });
             model.userData.cosmicMaterial = cosmicMaterial;
 
-            // Outline: inverted hull method — inflated backfaces in black
-            const outlineVert = /* glsl */`
-                void main() {
-                    // Push vertices out along normal (thin outline in local space)
-                    vec3 pos = position + normal * 0.006;
-                    gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
-                }
-            `;
-            const outlineFrag = /* glsl */`
-                void main() {
-                    gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
-                }
-            `;
-            const outlineMat = new THREE.ShaderMaterial({
-                vertexShader: outlineVert,
-                fragmentShader: outlineFrag,
-                side: THREE.BackSide,
-            });
-
             model.traverse(child => {
                 if (child.isMesh) {
                     child.material = cosmicMaterial;
-                    // Add outline mesh as sibling
-                    const outlineMesh = new THREE.Mesh(child.geometry, outlineMat);
-                    outlineMesh.renderOrder = -1;
-                    child.parent.add(outlineMesh);
                 }
             });
+
+            // Debug slider panel
+            const panel = document.createElement('div');
+            panel.style.cssText = 'position:fixed;top:10px;right:10px;background:rgba(0,0,0,0.85);color:#fff;padding:12px;border-radius:8px;font:12px monospace;z-index:9999;min-width:220px;';
+            panel.innerHTML = '<div style="font-size:14px;margin-bottom:8px;font-weight:bold">Cosmic Debug</div>';
+            const sliders = [
+                { key: 'uEdgeWidth', label: 'Edge Width', min: 0, max: 2, step: 0.01, val: 0.5 },
+                { key: 'uNoiseStrength', label: 'Noise Str', min: 0, max: 3, step: 0.01, val: 0.7 },
+                { key: 'uNoiseScale', label: 'Noise Scale', min: 0.1, max: 10, step: 0.1, val: 1.5 },
+                { key: 'uBaseAlpha', label: 'Base Alpha', min: 0, max: 1, step: 0.01, val: 0.9 },
+                { key: 'uSwayAmount', label: 'Sway', min: 0, max: 5, step: 0.1, val: 1.0 },
+            ];
+            sliders.forEach(s => {
+                const row = document.createElement('div');
+                row.style.cssText = 'margin:6px 0;';
+                const valSpan = document.createElement('span');
+                valSpan.textContent = s.val;
+                valSpan.style.cssText = 'float:right;width:40px;text-align:right;';
+                const input = document.createElement('input');
+                input.type = 'range';
+                input.min = s.min; input.max = s.max; input.step = s.step; input.value = s.val;
+                input.style.cssText = 'width:130px;vertical-align:middle;';
+                input.addEventListener('input', () => {
+                    const v = parseFloat(input.value);
+                    cosmicUniforms[s.key].value = v;
+                    valSpan.textContent = v.toFixed(2);
+                });
+                row.innerHTML = `<div style="margin-bottom:2px">${s.label}</div>`;
+                row.appendChild(input);
+                row.appendChild(valSpan);
+                panel.appendChild(row);
+            });
+            document.body.appendChild(panel);
             scene.add(model);
             cosmicEntityRef = model;
 

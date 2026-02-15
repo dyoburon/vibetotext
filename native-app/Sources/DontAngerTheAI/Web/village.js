@@ -654,8 +654,8 @@ export async function initVillage(scene, totalWords, startHidden, stateData, roo
 
                 // Single wave function: center Y, wobble speed, width, brightness
                 float waveLine(float y, float cx, float cz, float center, float wobbleSpd, float width) {
-                    float shape = sin(cx * 0.2 + wobbleSpd * 1.0) * 3.0
-                               + sin(cz * 0.3 + wobbleSpd * 0.7) * 2.0;
+                    float shape = sin(cx * 0.2 + wobbleSpd * 1.0) * 0.3
+                               + sin(cz * 0.3 + wobbleSpd * 0.7) * 0.2;
                     return smoothstep(width, 0.0, abs(y - center - shape));
                 }
 
@@ -669,25 +669,20 @@ export async function initVillage(scene, totalWords, startHidden, stateData, roo
                     float cx = vWorldPos.x;
                     float cz = vWorldPos.z;
 
-                    // 5 stacked lines moving as one group
+                    // 3 stacked lines: purple, blue, purple
                     float waves = 0.0;
                     vec3 waveColor = vec3(0.0);
                     vec3 blueCol = vec3(0.3, 0.7, 1.0);
                     vec3 purpleCol = vec3(0.5, 0.3, 0.95);
 
-                    float w1 = waveLine(y, cx, cz, groupCenter - 8.0, uTime * 2.0, 1.2) * 0.4;
-                    float w2 = waveLine(y, cx, cz, groupCenter - 3.0, uTime * 2.2, 1.8) * 0.75;
-                    float w3 = waveLine(y, cx, cz, groupCenter + 2.0, uTime * 1.9, 2.0) * 0.85;
-                    float w4 = waveLine(y, cx, cz, groupCenter + 7.0, uTime * 2.3, 1.8) * 0.75;
-                    float w5 = waveLine(y, cx, cz, groupCenter + 12.0, uTime * 1.8, 1.2) * 0.4;
-                    waves = w1 + w2 + w3 + w4 + w5;
+                    float w1 = waveLine(y, cx, cz, groupCenter - 5.0, uTime * 2.0, 1.5) * 0.7;
+                    float w2 = waveLine(y, cx, cz, groupCenter,       uTime * 2.1, 2.0) * 0.85;
+                    float w3 = waveLine(y, cx, cz, groupCenter + 5.0, uTime * 1.9, 1.5) * 0.7;
+                    waves = w1 + w2 + w3;
 
-                    // Outer lines purple, inner lines blue
                     waveColor += purpleCol * w1;
                     waveColor += blueCol * w2;
-                    waveColor += blueCol * w3;
-                    waveColor += blueCol * w4;
-                    waveColor += purpleCol * w5;
+                    waveColor += purpleCol * w3;
 
                     // Wispy edges — noise dissolve at silhouette
                     vec3 V = normalize(cameraPosition - vWorldPos);

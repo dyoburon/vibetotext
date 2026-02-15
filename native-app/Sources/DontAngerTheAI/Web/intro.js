@@ -77,7 +77,8 @@ export function startRainGrowth(words, totalWords, maxTreeY) {
 //         skyUniforms, starMat, fireflyMat, glowMat, TARGET_DIR, TARGET_AMB, TARGET_HEMI, TARGET_RIM }
 export function skipToDone(deps) {
     introPhase = 'done';
-    deps.growthClip.constant = PLANET_RADIUS + deps.maxTreeY + 5;
+    const wgY = deps.worldGroupY || 0;
+    deps.growthClip.constant = wgY + PLANET_RADIUS + deps.maxTreeY + 5;
     deps.barkMat.clippingPlanes = [];
     deps.bloomMat.clippingPlanes = [];
     for (const s of deps.leafWordSprites()) s.visible = true;
@@ -103,12 +104,13 @@ export function updateRainGrowthPhase(dt, t, deps) {
     const topY = deps.maxTreeY + 10;
     const spreadW = Math.max(20, deps.maxTreeY * 1.5);
 
-    // Tree grows
-    const clipY = PLANET_RADIUS + growthP * (deps.maxTreeY + 2);
+    // Tree grows (clip plane is world-space, offset by worldGroup.y)
+    const wgY = deps.worldGroupY || 0;
+    const clipY = wgY + PLANET_RADIUS + growthP * (deps.maxTreeY + 2);
     deps.growthClip.constant = clipY;
 
     // Show word sprites below clip plane (sprites are in treeGroup-local space)
-    for (const s of deps.leafWordSprites()) s.visible = s.position.y < (clipY - PLANET_RADIUS);
+    for (const s of deps.leafWordSprites()) s.visible = s.position.y < (clipY - wgY - PLANET_RADIUS);
 
     // Fireflies appear with tree
     deps.fireflyMat.opacity = growthP * 0.4;

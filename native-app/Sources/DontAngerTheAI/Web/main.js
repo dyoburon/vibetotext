@@ -139,7 +139,7 @@ const rimLight = new THREE.DirectionalLight(0x5577aa, TARGET_RIM * RAIN_FRAC);
 rimLight.position.set(-5, 6, -8);
 scene.add(rimLight);
 
-// ── Growth clip plane ──
+// ── Growth clip plane (world-space, offset by worldGroup.y) ──
 const growthClip = new THREE.Plane(new THREE.Vector3(0, -1, 0), PLANET_RADIUS);
 
 // ── World group (planet + village + tree — movable as a unit) ──
@@ -147,6 +147,7 @@ const worldGroup = new THREE.Group();
 worldGroup.position.set(0, -42, -62);
 scene.add(worldGroup);
 window._worldGroup = worldGroup;
+growthClip.constant = worldGroup.position.y + PLANET_RADIUS; // tree starts hidden
 
 // ── Planet sphere (procedural fallback, may be replaced by GLB) ──
 const planetGeo = new THREE.SphereGeometry(PLANET_RADIUS, 64, 48);
@@ -221,6 +222,7 @@ function getIntroDeps() {
         leafWordSprites: () => getLeafWordSprites(),
         rainSprites: () => getRainSprites(),
         maxTreeY,
+        worldGroupY: worldGroup.position.y,
         dirLight, ambient, hemiLight, rimLight,
         skyUniforms, starMat, fireflyMat,
         TARGET_DIR, TARGET_AMB, TARGET_HEMI, TARGET_RIM, RAIN_FRAC,

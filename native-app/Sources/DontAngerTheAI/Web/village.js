@@ -638,6 +638,9 @@ export async function initVillage(scene, totalWords, startHidden, stateData, roo
                 uniform float uWaveScrollSpd;
                 uniform float uWaveScrollRange;
                 uniform float uWaveAlpha;
+                uniform float uTopCloudY;
+                uniform float uTopCloudWidth;
+                uniform float uTopCloudIntensity;
                 varying vec3 vWorldPos;
                 varying vec3 vNormal;
 
@@ -799,12 +802,39 @@ export async function initVillage(scene, totalWords, startHidden, stateData, roo
                     float noise = (n1 + n2) * 0.5;
                     float edgeFade = smoothstep(0.0, uEdgeWidth, facing + (noise - 0.5) * uNoiseStrength);
 
+                    // ── Permanent top cloud (same treatment as scrolling band) ──
+                    float topDist = bandProximity(y, cx, cz, uTopCloudY);
+                    float topWidth = uTopCloudWidth;
+                    float topMask = exp(-topDist * topDist / (topWidth * topWidth));
+                    float topCore = exp(-topDist * topDist / (topWidth * topWidth * 0.15));
+
+                    float topNebula = topMask * cloud * dustLane * uTopCloudIntensity * 0.3;
+                    topNebula = topNebula / (1.0 + topNebula);
+                    float topWisps = cloudDetail * topMask * dustLane * 0.4;
+                    topWisps = topWisps / (1.0 + topWisps);
+
+                    vec3 topColor = bandColor * (topNebula + topWisps);
+                    float tcLen = length(topColor);
+                    if (tcLen > 0.001) {
+                        vec3 tcDir = topColor / tcLen;
+                        float tcBri = tcLen / (1.0 + tcLen);
+                        topColor = tcDir * tcBri;
+                    }
+
+                    float topHalo = exp(-topDist * topDist / (topWidth * topWidth * 4.0)) * 0.06;
+                    vec3 topHaloColor = mix(deepBlue, lavenderCol, 0.3) * topHalo;
+
+                    // Extra stars in top cloud
+                    stars += denseStars * topMask * 0.5 + bandStars * topCore * 0.6;
+
                     // ── Star colors — warm tint near core, cool elsewhere ──
-                    vec3 starColor = mix(vec3(0.7, 0.85, 1.0), vec3(1.0, 0.9, 0.7), coreMask);
+                    float combinedCore = max(coreMask, topCore);
+                    vec3 starColor = mix(vec3(0.7, 0.85, 1.0), vec3(1.0, 0.9, 0.7), combinedCore);
 
                     // ── Final composite ──
-                    vec3 color = starColor * stars * 1.5 + nebulaColor + haloColor;
-                    float alpha = (stars * 1.2 + nebulaIntensity + wisps * 0.5 + halo + uBaseAlpha) * edgeFade;
+                    vec3 color = starColor * stars * 1.5 + nebulaColor + haloColor + topColor + topHaloColor;
+                    float alpha = (stars * 1.2 + nebulaIntensity + wisps * 0.5 + halo
+                                 + topNebula + topWisps * 0.5 + topHalo + uBaseAlpha) * edgeFade;
                     alpha = clamp(alpha, 0.0, 1.0);
                     gl_FragColor = vec4(color, alpha);
                 }
@@ -825,6 +855,9 @@ export async function initVillage(scene, totalWords, startHidden, stateData, roo
                 uWaveScrollSpd: { value: 0.2 },
                 uWaveScrollRange: { value: 72.0 },
                 uWaveAlpha: { value: 0.0 },
+                uTopCloudY: { value: 75.0 },
+                uTopCloudWidth: { value: 8.0 },
+                uTopCloudIntensity: { value: 6.0 },
             };
             const cosmicMaterial = new THREE.ShaderMaterial({
                 uniforms: cosmicUniforms,
@@ -861,9 +894,13 @@ export async function initVillage(scene, totalWords, startHidden, stateData, roo
                 { key: 'uWaveScrollSpd', label: 'Scroll Speed', min: 0, max: 2, step: 0.05, val: 0.2 },
                 { key: 'uWaveScrollRange', label: 'Scroll Range', min: 0, max: 80, step: 1, val: 72.0 },
                 { key: 'uWaveAlpha', label: 'Wave Alpha', min: 0, max: 2, step: 0.05, val: 0.0 },
+                { key: '_divider2', label: '── Top Cloud ──' },
+                { key: 'uTopCloudY', label: 'Cloud Y', min: 0, max: 120, step: 1, val: 75.0 },
+                { key: 'uTopCloudWidth', label: 'Cloud Width', min: 1, max: 30, step: 0.5, val: 8.0 },
+                { key: 'uTopCloudIntensity', label: 'Cloud Glow', min: 0, max: 10, step: 0.1, val: 6.0 },
             ];
             sliders.forEach(s => {
-                if (s.key === '_divider') {
+                if (s.key.startsWith('_divider')) {
                     const divider = document.createElement('div');
                     divider.style.cssText = 'margin:10px 0 6px;font-size:13px;font-weight:bold;color:#8af;';
                     divider.textContent = s.label;

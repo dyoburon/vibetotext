@@ -202,9 +202,5 @@ export function generateTree(scene, camera, controls, seed, uniqueWords, strata)
     // Add tree group to scene
     scene.add(treeGroup);
 
-    // ── Camera framing for planet + tree ──
-    const totalH = PLANET_RADIUS + maxTreeY;
-    controls.target.set(0, PLANET_RADIUS * 0.3, 0);
-    camera.position.set(totalH * 0.6, totalH * 0.5, totalH * 0.8);
     controls.update();
 }

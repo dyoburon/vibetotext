@@ -21,7 +21,7 @@ const scene = new THREE.Scene();
 scene.fog = new THREE.FogExp2(0x88aabb, 0.002);
 
 const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 2000);
-camera.position.set(46.4, -18.9, 82.6);
+camera.position.set(5.2, 14.6, 83.5);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -50,7 +50,7 @@ window._camera = camera;
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = false;
 controls.autoRotate = false; // we handle rotation manually around the planet
-controls.target.set(30.9, -3.5, 17.5);
+controls.target.set(5.1, 16.4, 14.9);
 controls.minDistance = 0;
 controls.maxDistance = Infinity;
 controls.maxPolarAngle = Math.PI;

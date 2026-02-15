@@ -114,20 +114,25 @@ enum TreeDataCalculator {
         let streakLabel = streak == 0 ? "None" : "\(streak) days"
         let growthLabel = "\(Int(growthProgress * 100))%"
 
-        // ── Mood: exponentially-weighted sentiment average ──
-        let decayPerHour: Float = 0.98
-        let maxAgeHours: Float = 336.0 // 14 days
-        var weightedSum: Float = 0
-        var weightSum: Float = 0
+        // ── Mood: current day only, with minimum word threshold ──
+        let todayStart = calendar.startOfDay(for: now)
+        let minWordsForMood = 200
+        var todaySentimentSum: Float = 0
+        var todaySentimentCount: Int = 0
+        var todayWordCount: Int = 0
         for entry in entries {
+            guard entry.timestamp >= todayStart else { continue }
+            todayWordCount += entry.text.split(separator: " ").count
             guard let s = entry.sentiment else { continue }
-            let hoursAgo = Float(now.timeIntervalSince(entry.timestamp)) / 3600.0
-            if hoursAgo > maxAgeHours { continue }
-            let weight = pow(decayPerHour, hoursAgo)
-            weightedSum += Float(s) * weight
-            weightSum += weight
+            todaySentimentSum += Float(s)
+            todaySentimentCount += 1
         }
-        let mood = weightSum > 0 ? max(-1.0, min(1.0, weightedSum / weightSum)) : Float(0.0)
+        let mood: Float
+        if todayWordCount < minWordsForMood || todaySentimentCount == 0 {
+            mood = 0.0 // neutral until enough words spoken today
+        } else {
+            mood = max(-1.0, min(1.0, todaySentimentSum / Float(todaySentimentCount)))
+        }
 
         // ── Recent trend: last 24h avg vs previous 24h avg ──
         let oneDayAgo = calendar.date(byAdding: .day, value: -1, to: now)!
@@ -151,19 +156,17 @@ enum TreeDataCalculator {
         else if mood > -0.5 { moodLabel = "Cold" }
         else { moodLabel = "Hostile" }
 
-        // ── Mood breakdown: top positive & negative weighted contributors ──
+        // ── Mood breakdown: today's top positive & negative contributors ──
         var moodEntries: [MoodEntry] = []
         for entry in entries {
+            guard entry.timestamp >= todayStart else { continue }
             guard let s = entry.sentiment else { continue }
             let hoursAgo = Float(now.timeIntervalSince(entry.timestamp)) / 3600.0
-            if hoursAgo > maxAgeHours { continue }
-            let weight = pow(decayPerHour, hoursAgo)
-            moodEntries.append(MoodEntry(text: entry.text, sentiment: s, hoursAgo: hoursAgo, weight: weight))
+            moodEntries.append(MoodEntry(text: entry.text, sentiment: s, hoursAgo: hoursAgo, weight: 1.0))
         }
-        // Sort all entries by absolute weighted impact (sentiment * weight)
         let moodBreakdown = moodEntries
             .filter { abs($0.sentiment) > 0.05 }
-            .sorted { abs($0.sentiment) * Double($0.weight) > abs($1.sentiment) * Double($1.weight) }
+            .sorted { abs($0.sentiment) > abs($1.sentiment) }
 
         return TreeData(
             health: health,

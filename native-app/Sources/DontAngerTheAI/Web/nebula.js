@@ -705,9 +705,9 @@ export function animateNebula(dt, t, cameraPosition) {
                 if (drift.progress >= 1) delete ws.userData.drift;
             }
 
-            ws.position.x = ws.userData.baseX + Math.sin(t * 0.1 + phase) * 0.5;
-            ws.position.y = ws.userData.baseY + Math.sin(t * 0.15 + phase * 1.3) * 0.4;
-            ws.position.z = ws.userData.baseZ + Math.cos(t * 0.12 + phase * 0.7) * 0.5;
+            ws.position.x = ws.userData.baseX + Math.sin(t * 0.1 + phase) * 0.03;
+            ws.position.y = ws.userData.baseY + Math.sin(t * 0.15 + phase * 1.3) * 0.02;
+            ws.position.z = ws.userData.baseZ + Math.cos(t * 0.12 + phase * 0.7) * 0.03;
             ws.material.opacity = ws.userData.targetOpacity * fadeIn *
                 (0.8 + 0.2 * Math.sin(t * 0.5 + phase * 2));
         }

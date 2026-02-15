@@ -652,11 +652,13 @@ export async function initVillage(scene, totalWords, startHidden, stateData, roo
                     return smoothstep(0.1, 0.0, minD);
                 }
 
-                // Single wave function: center Y, wobble speed, width, brightness
+                // Single wave glow: division-based falloff + tanh clamp (matches sky-entity ring)
                 float waveLine(float y, float cx, float cz, float center, float wobbleSpd, float width) {
                     float shape = sin(cx * 0.2 + wobbleSpd * 1.0) * 0.3
                                + sin(cz * 0.3 + wobbleSpd * 0.7) * 0.2;
-                    return smoothstep(width, 0.0, abs(y - center - shape));
+                    float dist = abs(y - center - shape);
+                    float glow = width / (0.3 + dist);  // bright center, smooth falloff
+                    return glow / (1.0 + glow);          // tanh soft clamp
                 }
 
                 void main() {
@@ -683,6 +685,8 @@ export async function initVillage(scene, totalWords, startHidden, stateData, roo
                     waveColor += purpleCol * w1;
                     waveColor += blueCol * w2;
                     waveColor += purpleCol * w3;
+                    // Tanh clamp the glow color (same as sky-entity ring)
+                    waveColor = waveColor / (1.0 + abs(waveColor));
 
                     // Wispy edges — noise dissolve at silhouette
                     vec3 V = normalize(cameraPosition - vWorldPos);

@@ -692,8 +692,8 @@ export async function initVillage(scene, totalWords, startHidden, stateData, roo
                     // 3 stacked lines: purple, blue, purple
                     float waves = 0.0;
                     vec3 waveColor = vec3(0.0);
-                    vec3 blueCol = vec3(0.3, 0.7, 1.0);
-                    vec3 purpleCol = vec3(0.5, 0.3, 0.95);
+                    vec3 blueCol = vec3(0.043, 0.365, 0.522);   // #0b5d85 muted teal
+                    vec3 purpleCol = vec3(0.427, 0.396, 0.518); // #6d6584 dusty lavender
 
                     float w1 = waveLine(y, cx, cz, groupCenter - uWaveSpacing, uTime * 2.0, uWaveGlow) * 0.7;
                     float w2 = waveLine(y, cx, cz, groupCenter,                uTime * 2.1, uWaveGlow * 1.33) * 0.85;
@@ -740,11 +740,11 @@ export async function initVillage(scene, totalWords, startHidden, stateData, roo
                 uBaseAlpha: { value: 0.03 },
                 uSwayAmount: { value: 1.7 },
                 uSwaySpeed: { value: 0.1 },
-                uWaveGlow: { value: 5.55 },
-                uWaveFalloff: { value: 2.0 },
-                uWaveSpacing: { value: 2.0 },
-                uWaveWobble: { value: 1.05 },
-                uWaveScrollSpd: { value: 0.35 },
+                uWaveGlow: { value: 8.3 },
+                uWaveFalloff: { value: 0.01 },
+                uWaveSpacing: { value: 5.5 },
+                uWaveWobble: { value: 0.85 },
+                uWaveScrollSpd: { value: 0.45 },
                 uWaveScrollRange: { value: 44.0 },
                 uWaveAlpha: { value: 0.3 },
             };
@@ -776,11 +776,11 @@ export async function initVillage(scene, totalWords, startHidden, stateData, roo
                 { key: 'uSwayAmount', label: 'Sway Amount', min: 0, max: 5, step: 0.1, val: 1.7 },
                 { key: 'uSwaySpeed', label: 'Sway Speed', min: 0, max: 5, step: 0.1, val: 0.1 },
                 { key: '_divider', label: '── Wave Lines ──' },
-                { key: 'uWaveGlow', label: 'Glow Intensity', min: 0, max: 10, step: 0.05, val: 5.55 },
-                { key: 'uWaveFalloff', label: 'Glow Falloff', min: 0.01, max: 5, step: 0.01, val: 2.0 },
-                { key: 'uWaveSpacing', label: 'Spacing', min: 0, max: 20, step: 0.5, val: 2.0 },
-                { key: 'uWaveWobble', label: 'Wobble', min: 0, max: 3, step: 0.05, val: 1.05 },
-                { key: 'uWaveScrollSpd', label: 'Scroll Speed', min: 0, max: 2, step: 0.05, val: 0.35 },
+                { key: 'uWaveGlow', label: 'Glow Intensity', min: 0, max: 10, step: 0.05, val: 8.3 },
+                { key: 'uWaveFalloff', label: 'Glow Falloff', min: 0.01, max: 5, step: 0.01, val: 0.01 },
+                { key: 'uWaveSpacing', label: 'Spacing', min: 0, max: 20, step: 0.5, val: 5.5 },
+                { key: 'uWaveWobble', label: 'Wobble', min: 0, max: 3, step: 0.05, val: 0.85 },
+                { key: 'uWaveScrollSpd', label: 'Scroll Speed', min: 0, max: 2, step: 0.05, val: 0.45 },
                 { key: 'uWaveScrollRange', label: 'Scroll Range', min: 0, max: 80, step: 1, val: 44.0 },
                 { key: 'uWaveAlpha', label: 'Wave Alpha', min: 0, max: 2, step: 0.05, val: 0.3 },
             ];

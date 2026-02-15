@@ -424,7 +424,25 @@ function animate() {
             ffPos[b + 2] = fireflyBasePositions[b + 2] + Math.cos(t * 0.4 + i * 1.3) * 0.6;
         }
         fireflyGeo.attributes.position.needsUpdate = true;
-        starMat.opacity = 0.1 + 0.08 * Math.sin(t * 0.7);
+
+        // Day/night cycle — full loop every 15 seconds
+        const dayNight = Math.sin(t * Math.PI * 2 / 15); // -1 to 1
+        const dayFactor = dayNight * 0.5 + 0.5; // 0 (night) to 1 (day)
+        skyUniforms.brightness.value = 0.3 + dayFactor * 0.7;
+        dirLight.intensity = TARGET_DIR * (0.15 + dayFactor * 0.85);
+        ambient.intensity = TARGET_AMB * (0.3 + dayFactor * 0.7);
+        hemiLight.intensity = TARGET_HEMI * (0.3 + dayFactor * 0.7);
+        rimLight.intensity = TARGET_RIM * (0.3 + dayFactor * 0.7);
+
+        const nightBlue = new THREE.Color(0x0a1533);
+        const dayBlue = new THREE.Color(0x1a55aa);
+        skyUniforms.topColor.value.copy(nightBlue).lerp(dayBlue, dayFactor);
+        const nightMid = new THREE.Color(0x112244);
+        const dayMid = new THREE.Color(0x4499dd);
+        skyUniforms.midColor.value.copy(nightMid).lerp(dayMid, dayFactor);
+
+        starMat.opacity = (1 - dayFactor) * 0.3 + 0.05;
+        fireflyMat.opacity = 0.2 + (1 - dayFactor) * 0.3;
 
         // Update attack controller
         updateAttackController(dt);

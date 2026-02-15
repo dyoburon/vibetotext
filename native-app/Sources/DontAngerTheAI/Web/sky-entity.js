@@ -171,7 +171,25 @@ export function createSkyEntity(scene) {
     mesh.renderOrder = 1;
     scene.add(mesh);
 
-    skyEntity = { canvas, faceTex, mesh, mat, geo, sprite: mesh };
+    // Opaque dark disc behind the face to block cosmic model showing through
+    const discGeo = new THREE.CircleGeometry(0.5, 48);
+    const discMat = new THREE.MeshBasicMaterial({
+        color: 0x020208,
+        transparent: false,
+        side: THREE.DoubleSide,
+        depthWrite: true,
+        polygonOffset: true,
+        polygonOffsetFactor: 1,
+        polygonOffsetUnits: 1,
+    });
+    const disc = new THREE.Mesh(discGeo, discMat);
+    // Scale to match the void inside the ring (~0.40 in p-space / 3.5 UV scale)
+    disc.scale.set(0.25, 0.25, 1);
+    disc.position.set(0, 0, -0.05); // behind the face plane, clear of cosmic model
+    disc.renderOrder = 0;
+    mesh.add(disc); // child of face mesh, moves with it
+
+    skyEntity = { canvas, faceTex, mesh, mat, geo, disc, discMat, sprite: mesh };
     return skyEntity;
 }
 

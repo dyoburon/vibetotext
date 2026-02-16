@@ -99,72 +99,13 @@ function createBuildingFromGLB(glbModel, size, rng) {
 }
 
 // ── Building creation (local space only, caller places on sphere) ──
+// Returns null if GLB models haven't loaded yet.
 function createBuilding(size, rng) {
-    if (houseModels.length > 0) {
-        const idx = Math.floor(rng() * houseModels.length) % houseModels.length;
-        const clone = houseModels[idx].clone();
-        clone.traverse(c => { if (c.isMesh && c.material) c.material = c.material.clone(); });
-        return createBuildingFromGLB(clone, size, rng);
-    }
-    const group = new THREE.Group();
-    const w = 3.0 + rng() * size * 2.4;
-    const h = 4.0 + rng() * size * 2.8;
-    const d = 3.0 + rng() * size * 2.4;
-
-    const bodyGeo = new THREE.BoxGeometry(w, h, d);
-    // Colorful walls — wide hue range for a vibrant village
-    const wallHues = [0.0, 0.05, 0.08, 0.12, 0.15, 0.28, 0.45, 0.55, 0.6, 0.85, 0.92];
-    const wallHue = wallHues[Math.floor(rng() * wallHues.length)];
-    const bodyMat = new THREE.MeshStandardMaterial({
-        color: new THREE.Color().setHSL(wallHue, 0.45 + rng() * 0.35, 0.5 + rng() * 0.25),
-        roughness: 0.85
-    });
-    const body = new THREE.Mesh(bodyGeo, bodyMat);
-    body.position.y = h / 2;
-    group.add(body);
-
-    const roofGeo = new THREE.ConeGeometry(Math.max(w, d) * 0.75, h * 0.45, 4);
-    // Varied roof colors — terracotta, slate, teal, burgundy, mossy green
-    const roofColors = [0xB85533, 0x6B7B8D, 0x2D6A5A, 0x8B2252, 0x4A6741, 0xCC6633, 0x5B4A6A, 0x7B6B3A];
-    const roofMat = new THREE.MeshStandardMaterial({
-        color: new THREE.Color(roofColors[Math.floor(rng() * roofColors.length)]).multiplyScalar(0.7 + rng() * 0.3),
-        roughness: 0.85
-    });
-    const roof = new THREE.Mesh(roofGeo, roofMat);
-    roof.position.y = h + h * 0.225;
-    roof.rotation.y = Math.PI / 4;
-    group.add(roof);
-
-    const doorGeo = new THREE.PlaneGeometry(w * 0.3, h * 0.4);
-    const doorColors = [0x2a1506, 0x4a2010, 0x1a3050, 0x3a1525, 0x2a3a15, 0x502020];
-    const doorMat = new THREE.MeshStandardMaterial({ color: doorColors[Math.floor(rng() * doorColors.length)] });
-    const door = new THREE.Mesh(doorGeo, doorMat);
-    door.position.set(0, h * 0.2, d / 2 + 0.01);
-    group.add(door);
-
-    const windowMat = new THREE.MeshStandardMaterial({
-        color: 0xffdd88, emissive: 0xffdd88, emissiveIntensity: 0.3
-    });
-    for (const side of [-1, 1]) {
-        const winGeo = new THREE.PlaneGeometry(w * 0.18, h * 0.18);
-        const win = new THREE.Mesh(winGeo, windowMat);
-        win.position.set(side * w * 0.25, h * 0.6, d / 2 + 0.01);
-        group.add(win);
-    }
-
-    // Tag children for collapse animation
-    body.userData.part = 'body';
-    roof.userData.part = 'roof';
-    door.userData.part = 'door';
-
-    group.userData = {
-        onFire: false, fireParticles: null, bodyMat, w, h, d,
-        collapsing: false, collapseProgress: 0,
-        // Store original positions for collapse lerping
-        roofOrigY: roof.position.y,
-        bodyOrigY: body.position.y,
-    };
-    return group;
+    if (houseModels.length === 0) return null;
+    const idx = Math.floor(rng() * houseModels.length) % houseModels.length;
+    const clone = houseModels[idx].clone();
+    clone.traverse(c => { if (c.isMesh && c.material) c.material = c.material.clone(); });
+    return createBuildingFromGLB(clone, size, rng);
 }
 
 // ── Fire particles ──
@@ -211,46 +152,15 @@ function createVillagerFromGLB(glbModel, rng) {
 }
 
 // ── Villager creation (local space only, caller places on sphere) ──
+// Returns null if GLB models haven't loaded yet.
 function createVillager(rng, role) {
-    if (villagerModels.length > 0) {
-        const idx = (role && ROLE_TO_VARIANT[role] != null)
-            ? ROLE_TO_VARIANT[role] % villagerModels.length
-            : Math.floor(rng() * villagerModels.length);
-        const clone = villagerModels[idx].clone();
-        clone.traverse(c => { if (c.isMesh && c.material) c.material = c.material.clone(); });
-        return createVillagerFromGLB(clone, rng);
-    }
-    const group = new THREE.Group();
-    const hue = 0.05 + rng() * 0.12;
-    const shirtColor = new THREE.Color().setHSL(rng() * 0.9, 0.5, 0.4 + rng() * 0.2);
-
-    const bodyGeo = new THREE.CylinderGeometry(0.3, 0.4, 1.4, 6);
-    const bodyMat = new THREE.MeshStandardMaterial({ color: shirtColor });
-    const body = new THREE.Mesh(bodyGeo, bodyMat);
-    body.position.y = 1.1;
-    group.add(body);
-
-    const skinColor = new THREE.Color().setHSL(hue, 0.35, 0.55 + rng() * 0.2);
-    const headGeo = new THREE.SphereGeometry(0.32, 8, 6);
-    const headMat = new THREE.MeshStandardMaterial({ color: skinColor });
-    const head = new THREE.Mesh(headGeo, headMat);
-    head.position.y = 2.1;
-    group.add(head);
-
-    group.userData = {
-        targetTheta: rng() * Math.PI * 2,
-        targetPhi: 0.15 + rng() * 1.0,
-        speed: 0.3 + rng() * 0.4,
-        alive: true,
-        fallen: false,
-        fallProgress: 0,
-        waitTimer: 0,
-        phaseOffset: rng() * Math.PI * 2,
-        villagerId: null,
-        name: null,
-        role: null,
-    };
-    return group;
+    if (villagerModels.length === 0) return null;
+    const idx = (role && ROLE_TO_VARIANT[role] != null)
+        ? ROLE_TO_VARIANT[role] % villagerModels.length
+        : Math.floor(rng() * villagerModels.length);
+    const clone = villagerModels[idx].clone();
+    clone.traverse(c => { if (c.isMesh && c.material) c.material = c.material.clone(); });
+    return createVillagerFromGLB(clone, rng);
 }
 
 // ── Crop patch creation (local space only, caller places on sphere) ──
@@ -461,6 +371,7 @@ function _initFromState(scene, stateData, startHidden) {
     for (const bState of stateData.buildings) {
         const rng = mulberry32(bState.id * 1337 + 42);
         const b = createBuilding(bState.size, rng);
+        if (!b) continue;
         const { theta, phi } = flatToSpherical(bState.position.x, bState.position.z, maxFlatR);
         placeOnSphere(b, theta, phi, PLANET_RADIUS * 0.95);
         b.rotateY((rng() - 0.5) * 0.3);
@@ -479,6 +390,7 @@ function _initFromState(scene, stateData, startHidden) {
     for (const vState of stateData.villagers) {
         const rng = mulberry32(vState.id * 2654 + 99);
         const v = createVillager(rng, vState.role);
+        if (!v) continue;
         const { theta, phi } = flatToSpherical(vState.position.x, vState.position.z, maxFlatR);
         placeOnSphere(v, theta, phi, PLANET_RADIUS * 0.95);
         v.userData.villagerId = vState.id;
@@ -533,6 +445,7 @@ function _initProcedural(scene, startHidden) {
     for (const b of layout) {
         const { theta, phi } = flatToSpherical(b.x, b.z, maxFlatR);
         const building = createBuilding(b.size, mulberry32(Math.floor(b.x * 100 + b.z * 77)));
+        if (!building) continue;
         placeOnSphere(building, theta, phi, PLANET_RADIUS * 0.95);
         building.rotateY(rng() * Math.PI * 2);
         if (startHidden) building.visible = false;
@@ -987,6 +900,7 @@ function _spawnVillagers(scene, count, startHidden, maxFlatR) {
         const r = baseRadius * 0.6 + rng() * baseRadius * 0.8;
         const phi = _flatRadiusToPhi(r, maxFlatR);
         const v = createVillager(rng);
+        if (!v) break;
         placeOnSphere(v, theta, phi, PLANET_RADIUS * 0.95);
         v.userData.targetTheta = theta + (rng() - 0.5) * 0.3;
         v.userData.targetPhi = Math.max(0.05, phi + (rng() - 0.5) * 0.3);
@@ -1024,6 +938,7 @@ export function updateVillageState(scene, stateData) {
         if (!buildingObjects.has(bState.id)) {
             const rng = mulberry32(bState.id * 1337 + 42);
             const b = createBuilding(bState.size, rng);
+            if (!b) continue;
             const { theta, phi } = flatToSpherical(bState.position.x, bState.position.z, maxFlatR);
             placeOnSphere(b, theta, phi, PLANET_RADIUS * 0.95);
             b.rotateY((rng() - 0.5) * 0.3);
@@ -1031,6 +946,7 @@ export function updateVillageState(scene, stateData) {
             buildingObjects.set(bState.id, b);
         }
         const bObj = buildingObjects.get(bState.id);
+        if (!bObj) continue;
         if (bState.burned && !bObj.userData.onFire) {
             bObj.userData.onFire = true;
             bObj.userData.fireParticles = createFireParticles(bObj);
@@ -1050,6 +966,7 @@ export function updateVillageState(scene, stateData) {
         if (!villagerObjects.has(vState.id)) {
             const rng = mulberry32(vState.id * 2654 + 99);
             const v = createVillager(rng, vState.role);
+            if (!v) continue;
             const { theta, phi } = flatToSpherical(vState.position.x, vState.position.z, maxFlatR);
             placeOnSphere(v, theta, phi, PLANET_RADIUS * 0.95);
             v.userData.villagerId = vState.id;
@@ -1197,9 +1114,12 @@ export function updateVillageMood(scene, mood, population, trend, totalWords) {
     villageTrend = trend;
     if (totalWords) currentTotalWords = totalWords;
 
-    if (!villageInitialized) {
-        initVillage(scene, currentTotalWords);
-    }
+    // Don't auto-init from here — initTreeWords (or the 8s fallback) will
+    // call initVillage with the proper rootScene & stateData.  Auto-initing
+    // here caused _rootScene to be set to worldGroup (which rotates), making
+    // the cosmic entity spin with the planet, and also skipped the saved
+    // village state so procedural box buildings appeared instead of GLBs.
+    if (!villageInitialized) return;
 
     if (persistentStateActive) {
         _updateCropColors(mood);

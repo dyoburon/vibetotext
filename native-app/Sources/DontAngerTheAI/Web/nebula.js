@@ -480,6 +480,9 @@ function simulateDrain(entries) {
                 queue[j].wordsRemaining -= canDrain;
                 drainDebt -= canDrain;
             }
+            // Can't drain from an empty queue — discard excess
+            const queueWords = queue.slice(0, i).reduce((s, q) => s + q.wordsRemaining, 0);
+            if (queueWords === 0) drainDebt = 0;
         }
 
         lastTime = arrivalTime;
@@ -524,18 +527,7 @@ export function addEntries(entries) {
     // On first load, simulate drain but always keep at least 20% of entries
     let entriesToAdd = entries;
     if (isFirstLoad) {
-        const drained = simulateDrain(entries);
-        if (drained.length === 0 && entries.length > 0) {
-            // All entries drained — keep the most recent 20% so nebula isn't empty on boot
-            const sorted = [...entries]
-                .filter(e => e.text && e.text.trim().length > 0)
-                .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-            const keepCount = Math.max(5, Math.ceil(sorted.length * 0.2));
-            entriesToAdd = sorted.slice(0, keepCount);
-            console.log(`[nebula] drain emptied all — keeping ${entriesToAdd.length} most recent`);
-        } else {
-            entriesToAdd = drained;
-        }
+        entriesToAdd = simulateDrain(entries);
     }
 
     let added = 0;

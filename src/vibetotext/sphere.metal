@@ -144,7 +144,7 @@ fragment float4 fragment_sphere(SphereVOut in [[stage_in]],
 
     // Sweeping bar — moves up/down when idle, converges to equator when speaking
     float barSweep = sin(t * 0.8) * 0.9;
-    float barCenter = mix(barSweep, -0.15, smoothstep(0.0, 0.3, amp));
+    float barCenter = mix(barSweep, -0.05, smoothstep(0.0, 0.3, amp));
 
     // 3 lines — all overlap at barCenter when idle, spread apart with voice
     float lineThick = 0.025;

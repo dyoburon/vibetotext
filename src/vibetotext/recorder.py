@@ -220,7 +220,8 @@ class HotkeyListener:
             self._active_parts = None
             self._pressed.clear()
             if self.on_stop:
-                self.on_stop(mode)
+                t = threading.Thread(target=self.on_stop, args=(mode,), daemon=True)
+                t.start()
 
     def start(self, on_start, on_stop):
         """Start listening for hotkeys."""
@@ -287,11 +288,16 @@ class HotkeyListener:
                     _log(f"HOTKEY: Released {key_name}, stopping recording mode={mode}")
                     print(f"[HOTKEY] Stopping recording, mode={mode}")
                     if self.on_stop:
-                        _log(f"HOTKEY: Calling on_stop callback...")
-                        stop_start = time.time()
-                        self.on_stop(mode)
-                        stop_elapsed = time.time() - stop_start
-                        _log(f"HOTKEY: on_stop callback completed in {stop_elapsed:.3f}s")
+                        # Run on_stop in a separate thread so the hotkey listener
+                        # stays responsive even if transcription or stream.stop() hangs
+                        def _run_stop(m):
+                            _log(f"HOTKEY: Calling on_stop callback...")
+                            stop_start = time.time()
+                            self.on_stop(m)
+                            stop_elapsed = time.time() - stop_start
+                            _log(f"HOTKEY: on_stop callback completed in {stop_elapsed:.3f}s")
+                        t = threading.Thread(target=_run_stop, args=(mode,), daemon=True)
+                        t.start()
                 else:
                     self._pressed.discard(key_name)
 

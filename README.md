@@ -37,6 +37,14 @@ Track your voice coding productivity:
 pip install -e .
 ```
 
+On **Windows**, if you get a warning that `vibetotext.exe` is not on PATH, run:
+
+```bash
+python setup_windows_path.py
+```
+
+Then open a **new terminal** for the change to take effect.
+
 Requires `GEMINI_API_KEY` in `.env` for cleanup/plan modes.
 
 ## Usage

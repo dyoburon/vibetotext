@@ -444,17 +444,42 @@ class AppDelegate(NSObject):
                     screen_x = data.get("screen_x", 0)
                     screen_y = data.get("screen_y", 0)
                     screen_w = data.get("screen_w", 1920)
+                    screen_h = data.get("screen_h", 1080)
                     self.current_scale = 1.0
                     self.target_scale = 1.0
                     self.scale_velocity = 0.0
                     w = self.base_width
                     h = self.base_height
-                    right_edge_x = screen_x + int(screen_w * 0.74)
-                    self.anchor_right = right_edge_x
-                    self.anchor_bottom = screen_y + 20
+                    margin = 20
+
+                    # Determine position from config
+                    if "orb_x" in data and "orb_y" in data:
+                        # Custom x/y coordinates
+                        orb_x = data["orb_x"]
+                        orb_y = data["orb_y"]
+                    else:
+                        preset = data.get("orb_preset", "bottom-center")
+                        if preset == "top-left":
+                            orb_x = screen_x + margin + w
+                            orb_y = screen_y + screen_h - margin - h
+                        elif preset == "top-right":
+                            orb_x = screen_x + screen_w - margin
+                            orb_y = screen_y + screen_h - margin - h
+                        elif preset == "bottom-left":
+                            orb_x = screen_x + margin + w
+                            orb_y = screen_y + margin
+                        elif preset == "bottom-right":
+                            orb_x = screen_x + screen_w - margin
+                            orb_y = screen_y + margin
+                        else:  # bottom-center (default)
+                            orb_x = screen_x + int(screen_w * 0.74)
+                            orb_y = screen_y + margin
+
+                    self.anchor_right = orb_x
+                    self.anchor_bottom = orb_y
 
                     self.panel.setFrame_display_(
-                        NSMakeRect(right_edge_x - w, self.anchor_bottom, w, h),
+                        NSMakeRect(orb_x - w, self.anchor_bottom, w, h),
                         True,
                     )
                     self.panel.orderFrontRegardless()

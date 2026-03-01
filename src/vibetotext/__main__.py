@@ -63,9 +63,9 @@ def main():
     )
     parser.add_argument(
         "--model",
-        default="small",
+        default=None,
         choices=["tiny", "base", "small", "medium", "large", "large-v3", "large-v3-turbo"],
-        help="Whisper model size (default: small)",
+        help="Whisper model size (default: small, or saved setting)",
     )
     parser.add_argument(
         "--hotkey",
@@ -150,18 +150,24 @@ def main():
     else:
         print("[DEBUG] UI disabled via --no-ui flag", flush=True)
 
-    # Load config for saved audio device (unless overridden by --device)
+    # Load config for saved settings (CLI args take priority)
     import json
     config_file = Path.home() / ".vibetotext" / "config.json"
+    saved_config = {}
+    try:
+        if config_file.exists():
+            with open(config_file, "r") as f:
+                saved_config = json.load(f)
+    except Exception:
+        pass
+
     saved_device = args.device  # Command line takes priority
     if saved_device is None:
-        try:
-            if config_file.exists():
-                with open(config_file, "r") as f:
-                    config = json.load(f)
-                    saved_device = config.get("audio_device_index")
-        except Exception:
-            pass
+        saved_device = saved_config.get("audio_device_index")
+
+    # Use saved whisper model if not specified on CLI
+    if args.model is None:
+        args.model = saved_config.get("whisper_model", "small")
 
     # Set audio device
     import sounddevice as sd

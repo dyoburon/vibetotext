@@ -39,6 +39,7 @@
       <button class="tab" data-mode="analytics">Analytics</button>
       <button class="tab" data-mode="microphone">Microphone</button>
       <button class="tab" data-mode="dictionary">Dictionary</button>
+      <button class="tab" data-mode="settings">Settings</button>
     </div>
 
     <div class="common-words" id="common-words-section">
@@ -81,6 +82,55 @@
           <!-- Words will be populated by JavaScript -->
         </div>
         <p class="dict-status" id="dict-status"></p>
+      </div>
+    </div>
+
+    <div class="settings-panel" id="settings-panel" style="display: none;">
+      <div class="settings-section">
+        <h3>Orb Position</h3>
+        <p class="settings-description">Choose where the recording indicator appears on your screen.</p>
+        <div class="orb-presets" id="orb-presets">
+          <button class="orb-preset" data-preset="top-left">Top Left</button>
+          <button class="orb-preset" data-preset="top-right">Top Right</button>
+          <button class="orb-preset" data-preset="bottom-left">Bottom Left</button>
+          <button class="orb-preset" data-preset="bottom-right">Bottom Right</button>
+          <button class="orb-preset active" data-preset="bottom-center">Bottom Center</button>
+        </div>
+        <p class="settings-sublabel">Or set exact coordinates:</p>
+        <div class="orb-custom-pos">
+          <div class="orb-coord">
+            <label for="orb-x">X</label>
+            <input type="number" id="orb-x" class="orb-coord-input" placeholder="px">
+          </div>
+          <div class="orb-coord">
+            <label for="orb-y">Y</label>
+            <input type="number" id="orb-y" class="orb-coord-input" placeholder="px">
+          </div>
+          <button id="orb-custom-save" class="orb-custom-btn">Apply</button>
+        </div>
+        <p class="settings-status" id="orb-status"></p>
+      </div>
+
+      <div class="settings-section">
+        <h3>Whisper Model</h3>
+        <p class="settings-description">Larger models are more accurate but slower to load and transcribe.</p>
+        <select id="model-select" class="mic-dropdown">
+          <option value="tiny">tiny — fastest, least accurate</option>
+          <option value="base">base</option>
+          <option value="small" selected>small (default)</option>
+          <option value="medium">medium</option>
+          <option value="large">large</option>
+          <option value="large-v3">large-v3</option>
+          <option value="large-v3-turbo">large-v3-turbo — most accurate</option>
+        </select>
+        <p class="settings-status" id="model-status"></p>
+      </div>
+
+      <div class="settings-section">
+        <h3>Restart Engine</h3>
+        <p class="settings-description">Restart the vibetotext engine to apply changes.</p>
+        <button id="restart-btn" class="restart-btn">Restart</button>
+        <p class="settings-status" id="restart-status"></p>
       </div>
     </div>
 

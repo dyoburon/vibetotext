@@ -1,13 +1,26 @@
-"""History viewer UI - native macOS window."""
+"""History viewer UI - dispatches to platform-specific implementation.
+
+On macOS: Uses PyObjC-based native NSWindow
+On Windows/Linux: Uses tkinter-based history viewer
+"""
 
 import json
 import os
+import platform
 import subprocess
 import sys
 import tempfile
 
-# Path for IPC
-_history_ipc_file = os.path.join(tempfile.gettempdir(), "vibetotext_history_ipc.json")
+IS_WINDOWS = platform.system() == "Windows"
+IS_MACOS = platform.system() == "Darwin"
+
+# Path for IPC - use platform-appropriate temp directory
+if IS_WINDOWS:
+    _history_ipc_file = os.path.join(
+        os.environ.get("TEMP", tempfile.gettempdir()), "vibetotext_history_ipc.json"
+    )
+else:
+    _history_ipc_file = os.path.join(tempfile.gettempdir(), "vibetotext_history_ipc.json")
 _history_ui_process = None
 
 # The History UI script that runs in its own process
@@ -390,17 +403,84 @@ def _write_history_ipc(data):
         pass
 
 
+def _find_history_ui_script():
+    """Find the appropriate history UI script for the current platform."""
+    if IS_WINDOWS or not IS_MACOS:
+        # Use tkinter-based history UI on Windows and Linux
+        # Check for bundled script (PyInstaller)
+        if getattr(sys, 'frozen', False):
+            # In PyInstaller _MEIPASS temp dir
+            meipass = getattr(sys, '_MEIPASS', None)
+            if meipass:
+                script = os.path.join(meipass, 'vibetotext', 'history_ui_tkinter.py')
+                if os.path.exists(script):
+                    return script
+
+            base_dir = os.path.dirname(sys.executable)
+            script = os.path.join(base_dir, 'vibetotext', 'history_ui_tkinter.py')
+            if os.path.exists(script):
+                return script
+            script = os.path.join(base_dir, 'history_ui_tkinter.py')
+            if os.path.exists(script):
+                return script
+
+        # Running from source
+        script = os.path.join(os.path.dirname(__file__), "history_ui_tkinter.py")
+        if os.path.exists(script):
+            return script
+
+    # macOS: use embedded PyObjC script (write to temp)
+    script_file = os.path.join(tempfile.gettempdir(), "vibetotext_history_ui.py")
+    with open(script_file, "w") as f:
+        f.write(HISTORY_UI_SCRIPT)
+    return script_file
+
+
+# Thread handle for in-process history UI (used in frozen mode)
+_history_ui_thread = None
+
+
+def _launch_history_ui_inprocess():
+    """Run the history UI in-process on a thread (for frozen/PyInstaller builds)."""
+    global _history_ui_thread
+    import threading
+
+    if _history_ui_thread is not None and _history_ui_thread.is_alive():
+        # Already running - just send show signal via IPC
+        return
+
+    def run_history():
+        try:
+            from vibetotext.history_ui_tkinter import HistoryWindow
+            # Override IPC file path
+            import vibetotext.history_ui_tkinter as hui
+            hui.IPC_FILE = _history_ipc_file
+            window = HistoryWindow()
+            window.run()
+        except Exception as e:
+            print(f"[HISTORY] In-process history UI error: {e}", flush=True)
+            import traceback
+            traceback.print_exc()
+
+    _history_ui_thread = threading.Thread(target=run_history, daemon=True)
+    _history_ui_thread.start()
+    print("[HISTORY] Started in-process history UI thread", flush=True)
+
+
 def _ensure_history_ui_process():
-    """Start the history UI process if not running."""
+    """Start the history UI - in-process when frozen, subprocess when from source."""
     global _history_ui_process
+
+    # When running as a frozen PyInstaller exe, sys.executable is the engine exe,
+    # not Python. Run the history UI in-process on a thread instead.
+    if getattr(sys, 'frozen', False) and (IS_WINDOWS or not IS_MACOS):
+        _launch_history_ui_inprocess()
+        return
 
     if _history_ui_process is not None and _history_ui_process.poll() is None:
         return
 
-    # Write the UI script to a temp file
-    script_file = os.path.join(tempfile.gettempdir(), "vibetotext_history_ui.py")
-    with open(script_file, "w") as f:
-        f.write(HISTORY_UI_SCRIPT)
+    script_file = _find_history_ui_script()
 
     # Clear any old IPC file
     if os.path.exists(_history_ipc_file):
@@ -408,11 +488,20 @@ def _ensure_history_ui_process():
 
     # Start the UI process
     error_log = os.path.join(tempfile.gettempdir(), "vibetotext_history_ui_error.log")
+
+    # When running from source with Python interpreter, hide the console window
+    startupinfo = None
+    if IS_WINDOWS:
+        startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        startupinfo.wShowWindow = subprocess.SW_HIDE
+
     with open(error_log, "w") as err_file:
         _history_ui_process = subprocess.Popen(
             [sys.executable, script_file, _history_ipc_file],
             stdout=subprocess.PIPE,
             stderr=err_file,
+            startupinfo=startupinfo,
         )
 
 

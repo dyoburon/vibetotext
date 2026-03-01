@@ -219,6 +219,22 @@ class HotkeyListener:
         PROCESSING ---(on_stop complete)---> IDLE
     """
 
+    # Cross-platform key name normalization.
+    # On Windows/Linux, pynput reports side-specific names (ctrl_l, alt_r, etc.)
+    # We normalize these to generic names to match hotkey definitions.
+    _KEY_ALIASES = {
+        "ctrl_l": "ctrl", "ctrl_r": "ctrl",
+        "alt_l": "alt", "alt_r": "alt",
+        "shift_l": "shift", "shift_r": "shift",
+        "cmd_l": "cmd", "cmd_r": "cmd",
+        "super_l": "cmd", "super_r": "cmd",  # Linux reports Super as super_l/r
+    }
+
+    @classmethod
+    def _normalize_key(cls, key_name: str) -> str:
+        """Normalize platform-specific key names to generic names."""
+        return cls._KEY_ALIASES.get(key_name, key_name)
+
     def __init__(self, hotkeys: dict = None, max_recording_seconds: int = 60):
         if hotkeys is None:
             hotkeys = {"ctrl+shift": "transcribe"}
@@ -368,6 +384,8 @@ class HotkeyListener:
             except AttributeError:
                 return
 
+            key_name = self._normalize_key(key_name)
+
             # Key-repeat guard: ignore if already pressed
             if key_name in self._pressed:
                 return
@@ -387,6 +405,7 @@ class HotkeyListener:
             except AttributeError:
                 return
 
+            key_name = self._normalize_key(key_name)
             self._pressed.discard(key_name)
             self._queue.put_nowait((_Msg.STOP, key_name))
 

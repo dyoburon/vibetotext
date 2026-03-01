@@ -9,7 +9,7 @@ import time
 import traceback
 from pathlib import Path
 
-from .recorder import AudioRecorder, HotkeyListener
+from .recorder import AudioRecorder, HotkeyListener, _log
 from .transcriber import Transcriber
 from .context import search_context, format_context
 from .greppy import search_files, format_files_for_context
@@ -231,21 +231,33 @@ def main():
             if mode in ("history", "viz"):
                 return
 
+            stop_t0 = time.time()
+            _log(f"on_stop: BEGIN mode={mode}")
+
             audio = recorder.stop()
+            _log(f"on_stop: recorder.stop() done ({time.time() - stop_t0:.3f}s)")
+
             if ui:
+                t = time.time()
                 ui.hide_recording()
+                _log(f"on_stop: ui.hide_recording() done ({time.time() - t:.3f}s)")
             print(" done.")
 
             if len(audio) == 0:
+                _log("on_stop: no audio, returning early")
                 print("No audio recorded.")
                 return
 
             # Transcribe
             print("Transcribing...", end="", flush=True)
+            _log(f"on_stop: transcribing ({len(audio)} samples, {len(audio)/16000:.2f}s audio)...")
+            t = time.time()
             text = transcriber.transcribe(audio)
+            _log(f"on_stop: transcribe() done ({time.time() - t:.3f}s)")
             print(" done.")
 
             if not text:
+                _log("on_stop: no text, returning early")
                 print("No speech detected.")
                 return
 
@@ -258,15 +270,20 @@ def main():
                 "[no speech]", "[ no speech ]", "(no speech)", "( no speech )",
             )
             if text_lower in noise_markers:
+                _log("on_stop: noise marker detected, returning early")
                 print("No speech detected (blank audio).")
                 return
 
             print(f"Transcribed: {text}")
+            _log(f"on_stop: transcribed text='{text[:80]}'")
 
             if mode == "greppy":
                 # Greppy mode: search for relevant files and attach them
                 print("Searching with Greppy...", end="", flush=True)
+                _log("on_stop: search_files()...")
+                t = time.time()
                 files = search_files(text, limit=args.greppy_limit, codebase=args.codebase)
+                _log(f"on_stop: search_files() done ({time.time() - t:.3f}s), {len(files)} files")
                 print(f" found {len(files)} files.")
 
                 if files:
@@ -280,7 +297,10 @@ def main():
             elif mode == "cleanup":
                 # Cleanup mode: use Gemini to refine rambling into clear prompt
                 print("Cleaning up with Gemini...", end="", flush=True)
+                _log("on_stop: cleanup_text()...")
+                t = time.time()
                 refined = cleanup_text(text)
+                _log(f"on_stop: cleanup_text() done ({time.time() - t:.3f}s)")
                 if refined:
                     print(" done.")
                     print(f"Refined: {refined[:100]}..." if len(refined) > 100 else f"Refined: {refined}")
@@ -292,7 +312,10 @@ def main():
             elif mode == "plan":
                 # Plan mode: use Gemini to generate implementation plan
                 print("Generating implementation plan...", end="", flush=True)
+                _log("on_stop: generate_implementation_plan()...")
+                t = time.time()
                 plan = generate_implementation_plan(text)
+                _log(f"on_stop: generate_implementation_plan() done ({time.time() - t:.3f}s)")
                 if plan:
                     print(" done.")
                     print(f"Plan: {plan[:150]}..." if len(plan) > 150 else f"Plan: {plan}")
@@ -305,22 +328,35 @@ def main():
                 # Regular transcribe mode
                 if not args.no_context:
                     print("Searching for relevant code...", end="", flush=True)
+                    _log("on_stop: search_context()...")
+                    t = time.time()
                     snippets = search_context(text, limit=args.context_limit)
                     context = format_context(snippets)
+                    _log(f"on_stop: search_context() done ({time.time() - t:.3f}s), {len(snippets)} snippets")
                     print(f" found {len(snippets)} snippets.")
                     output = text + context
                 else:
                     output = text
 
             # Save to history
+            _log("on_stop: saving to history...")
+            t = time.time()
             history.add_entry(text, mode)
+            _log(f"on_stop: history.add_entry() done ({time.time() - t:.3f}s)")
             print(f"[DEBUG] Saved to history: {text[:50]}... mode={mode}")
 
             # Paste at cursor
+            _log("on_stop: paste_at_cursor()...")
+            t = time.time()
             paste_at_cursor(output)
+            _log(f"on_stop: paste_at_cursor() done ({time.time() - t:.3f}s)")
             print("Pasted at cursor.\n")
 
+            _log(f"on_stop: END total={time.time() - stop_t0:.3f}s")
+
         except Exception as e:
+            _log(f"on_stop: EXCEPTION after {time.time() - stop_t0:.3f}s: {e}")
+
             # Log error to file and print to console
             error_log = os.path.join(tempfile.gettempdir(), "vibetotext_crash.log")
             error_msg = f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Error in on_stop (mode={mode}):\n"

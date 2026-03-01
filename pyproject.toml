@@ -15,9 +15,20 @@ dependencies = [
     "numpy",
     "pyperclip",
     "pynput",
+    "python-dotenv",
 ]
 
 [project.optional-dependencies]
+gemini = [
+    "google-generativeai",
+]
+windows = [
+    "pystray",
+    "Pillow",
+]
+build = [
+    "pyinstaller",
+]
 dev = [
     "pytest",
 ]

@@ -13,12 +13,11 @@ env/
 dist/
 build/
 *.manifest
-*.spec
 
-# PyInstaller
-*.spec
+# PyInstaller output (NOT the packaging/ config specs)
 build/
 dist/
+pyinstaller_build/
 
 # IDE
 .idea/

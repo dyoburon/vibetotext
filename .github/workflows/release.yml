@@ -1,0 +1,123 @@
+name: Build & Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., v0.1.0)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          pip install -e ".[gemini,build]"
+          pip install pyobjc
+
+      - name: Build macOS binaries
+        run: |
+          pyinstaller packaging/macos/vibetotext-engine.spec --noconfirm --distpath dist --workpath pyinstaller_build
+          pyinstaller packaging/macos/vibetotext-ui.spec --noconfirm --distpath dist --workpath pyinstaller_build
+
+      - name: Package macOS artifacts
+        run: |
+          cd dist
+          tar czf ../vibetotext-macos-arm64.tar.gz vibetotext-engine vibetotext-ui
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-binaries
+          path: vibetotext-macos-arm64.tar.gz
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -e ".[windows,gemini,build]"
+
+      - name: Build Windows binaries
+        run: |
+          pyinstaller packaging/windows/vibetotext-engine.spec --noconfirm --distpath dist --workpath pyinstaller_build
+          pyinstaller packaging/windows/vibetotext-ui.spec --noconfirm --distpath dist --workpath pyinstaller_build
+
+      - name: Package Windows artifacts
+        run: |
+          Compress-Archive -Path dist\vibetotext-engine.exe, dist\vibetotext-ui.exe -DestinationPath vibetotext-windows-x64.zip
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-binaries
+          path: vibetotext-windows-x64.zip
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-tk portaudio19-dev
+
+      - name: Install Python dependencies
+        run: pip install -e ".[gemini,build]"
+
+      - name: Build Linux binary
+        run: |
+          pyinstaller packaging/linux/vibetotext-engine.spec --noconfirm --distpath dist --workpath pyinstaller_build
+
+      - name: Package Linux artifacts
+        run: |
+          cd dist
+          tar czf ../vibetotext-linux-x64.tar.gz vibetotext-engine
+          cd ..
+          cp packaging/linux/vibetotext.desktop dist/
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-binaries
+          path: vibetotext-linux-x64.tar.gz
+
+  release:
+    needs: [build-macos, build-windows, build-linux]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            artifacts/macos-binaries/vibetotext-macos-arm64.tar.gz
+            artifacts/windows-binaries/vibetotext-windows-x64.zip
+            artifacts/linux-binaries/vibetotext-linux-x64.tar.gz

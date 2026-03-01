@@ -1,0 +1,7 @@
+{
+  "dependencies": {
+    "@gltf-transform/core": "^4.3.0",
+    "@gltf-transform/functions": "^4.3.0",
+    "meshoptimizer": "^1.0.1"
+  }
+}

@@ -4,6 +4,7 @@ const fs = require('fs');
 const chokidar = require('chokidar');
 const os = require('os');
 
+app.setName('VibeToText');
 console.log('Starting VibeToText app...');
 
 // History file path

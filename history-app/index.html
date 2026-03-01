@@ -39,6 +39,7 @@
       <button class="tab" data-mode="analytics">Analytics</button>
       <button class="tab" data-mode="microphone">Microphone</button>
       <button class="tab" data-mode="dictionary">Dictionary</button>
+      <button class="tab" data-mode="settings">Settings</button>
     </div>
 
     <div class="common-words" id="common-words-section">
@@ -84,6 +85,55 @@
       </div>
     </div>
 
+    <div class="settings-panel" id="settings-panel" style="display: none;">
+      <div class="settings-section">
+        <h3>Orb Position</h3>
+        <p class="settings-description">Choose where the recording indicator appears on your screen.</p>
+        <div class="orb-presets" id="orb-presets">
+          <button class="orb-preset" data-preset="top-left">Top Left</button>
+          <button class="orb-preset" data-preset="top-right">Top Right</button>
+          <button class="orb-preset" data-preset="bottom-left">Bottom Left</button>
+          <button class="orb-preset" data-preset="bottom-right">Bottom Right</button>
+          <button class="orb-preset active" data-preset="bottom-center">Bottom Center</button>
+        </div>
+        <p class="settings-sublabel">Or set exact coordinates:</p>
+        <div class="orb-custom-pos">
+          <div class="orb-coord">
+            <label for="orb-x">X</label>
+            <input type="number" id="orb-x" class="orb-coord-input" placeholder="px">
+          </div>
+          <div class="orb-coord">
+            <label for="orb-y">Y</label>
+            <input type="number" id="orb-y" class="orb-coord-input" placeholder="px">
+          </div>
+          <button id="orb-custom-save" class="orb-custom-btn">Apply</button>
+        </div>
+        <p class="settings-status" id="orb-status"></p>
+      </div>
+
+      <div class="settings-section">
+        <h3>Whisper Model</h3>
+        <p class="settings-description">Larger models are more accurate but slower to load and transcribe.</p>
+        <select id="model-select" class="mic-dropdown">
+          <option value="tiny">tiny — fastest, least accurate</option>
+          <option value="base">base</option>
+          <option value="small" selected>small (default)</option>
+          <option value="medium">medium</option>
+          <option value="large">large</option>
+          <option value="large-v3">large-v3</option>
+          <option value="large-v3-turbo">large-v3-turbo — most accurate</option>
+        </select>
+        <p class="settings-status" id="model-status"></p>
+      </div>
+
+      <div class="settings-section">
+        <h3>Restart Engine</h3>
+        <p class="settings-description">Restart the vibetotext engine to apply changes.</p>
+        <button id="restart-btn" class="restart-btn">Restart</button>
+        <p class="settings-status" id="restart-status"></p>
+      </div>
+    </div>
+
     <div class="analytics-panel" id="analytics-panel" style="display: none;">
       <div class="chart-grid">
         <!-- Streaks & Records -->
@@ -96,14 +146,16 @@
           <div id="records-card"></div>
         </div>
 
+        <!-- Topic Speed & Mood -->
+        <div class="chart-card full-width">
+          <h3>Topic Speed & Mood</h3>
+          <div id="topic-speed-mood"></div>
+        </div>
+
         <!-- Goals -->
         <div class="chart-card">
           <h3>Daily Goal Progress</h3>
           <div id="goals-card"></div>
-        </div>
-        <div class="chart-card">
-          <h3>Sessions Today</h3>
-          <div id="sessions-today"></div>
         </div>
 
         <!-- Activity Heatmap -->
@@ -131,6 +183,10 @@
         <div class="chart-card">
           <h3>Time Saved</h3>
           <div id="time-saved-chart"></div>
+        </div>
+        <div class="chart-card">
+          <h3>Cumulative Talking Time</h3>
+          <div id="cumulative-talking-time-chart"></div>
         </div>
         <div class="chart-card">
           <h3>Speaking Speed (WPM)</h3>
@@ -163,7 +219,7 @@
           <div id="new-words-week"></div>
         </div>
         <div class="chart-card">
-          <h3>Reading Level</h3>
+          <h3>Speaking Level</h3>
           <div id="reading-level"></div>
         </div>
         <div class="chart-card">
@@ -185,11 +241,6 @@
           <div id="wpm-by-hour"></div>
         </div>
 
-        <!-- Session Length -->
-        <div class="chart-card full-width">
-          <h3>Session Length Distribution</h3>
-          <div id="session-histogram"></div>
-        </div>
 
         <!-- Word Cloud -->
         <div class="chart-card full-width">

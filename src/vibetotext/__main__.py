@@ -1,7 +1,9 @@
 """Main CLI entry point."""
 
 import argparse
+import atexit
 import os
+import signal
 import subprocess
 import sys
 import tempfile
@@ -16,6 +18,7 @@ from vibetotext.greppy import search_files, format_files_for_context
 from vibetotext.llm import cleanup_text, generate_implementation_plan
 from vibetotext.output import paste_at_cursor
 from vibetotext.history import TranscriptionHistory
+from vibetotext.socket_server import TranscriptionSocketServer
 
 
 def open_history_app():
@@ -39,15 +42,30 @@ def open_history_app():
         pass
 
 
+def open_viz():
+    """Open the Don't Anger the AI visualization."""
+    src_dir = Path(__file__).parent.parent.parent
+    viz_dir = src_dir / "native-app"
+    binary = viz_dir / ".build" / "debug" / "DontAngerTheAI"
+    if binary.exists():
+        try:
+            subprocess.Popen([str(binary)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            print("[VIZ] Opening Don't Anger the AI...")
+        except Exception:
+            pass
+    else:
+        print("[VIZ] DontAngerTheAI binary not found. Run 'swift build' in native-app/ first.")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Voice-to-text with automatic code context injection"
     )
     parser.add_argument(
         "--model",
-        default="base",
-        choices=["tiny", "base", "small", "medium", "large"],
-        help="Whisper model size (default: base)",
+        default=None,
+        choices=["tiny", "base", "small", "medium", "large", "large-v3", "large-v3-turbo"],
+        help="Whisper model size (default: small, or saved setting)",
     )
     parser.add_argument(
         "--hotkey",
@@ -56,8 +74,8 @@ def main():
     )
     parser.add_argument(
         "--greppy-hotkey",
-        default="cmd+shift",
-        help="Hotkey for Greppy semantic search mode (default: cmd+shift)",
+        default="cmd+shift+g",
+        help="Hotkey for Greppy semantic search mode (default: cmd+shift+g)",
     )
     parser.add_argument(
         "--cleanup-hotkey",
@@ -66,13 +84,18 @@ def main():
     )
     parser.add_argument(
         "--plan-hotkey",
-        default="cmd+alt",
-        help="Hotkey for implementation plan mode (default: cmd+alt)",
+        default="cmd+alt+/",
+        help="Hotkey for implementation plan mode (default: cmd+alt+/)",
     )
     parser.add_argument(
         "--history-hotkey",
         default="ctrl+alt",
         help="Hotkey to toggle history window (default: ctrl+alt)",
+    )
+    parser.add_argument(
+        "--viz-hotkey",
+        default="cmd+ctrl+g",
+        help="Hotkey to open Word Galaxy visualization (default: cmd+ctrl+g)",
     )
     parser.add_argument(
         "--codebase",
@@ -127,18 +150,24 @@ def main():
     else:
         print("[DEBUG] UI disabled via --no-ui flag", flush=True)
 
-    # Load config for saved audio device (unless overridden by --device)
+    # Load config for saved settings (CLI args take priority)
     import json
     config_file = Path.home() / ".vibetotext" / "config.json"
+    saved_config = {}
+    try:
+        if config_file.exists():
+            with open(config_file, "r") as f:
+                saved_config = json.load(f)
+    except Exception:
+        pass
+
     saved_device = args.device  # Command line takes priority
     if saved_device is None:
-        try:
-            if config_file.exists():
-                with open(config_file, "r") as f:
-                    config = json.load(f)
-                    saved_device = config.get("audio_device_index")
-        except Exception:
-            pass
+        saved_device = saved_config.get("audio_device_index")
+
+    # Use saved whisper model if not specified on CLI
+    if args.model is None:
+        args.model = saved_config.get("whisper_model", "small")
 
     # Set audio device
     import sounddevice as sd
@@ -157,6 +186,7 @@ def main():
         args.cleanup_hotkey: "cleanup",
         args.plan_hotkey: "plan",
         args.history_hotkey: "history",
+        args.viz_hotkey: "viz",
     }
     listener = HotkeyListener(hotkeys=hotkeys)
 
@@ -172,11 +202,49 @@ def main():
     _ = transcriber.model
     print("[DEBUG] Model loaded, defining callbacks...", flush=True)
 
+    # Start socket server for external transcription (e.g., Jarvis)
+    socket_server = TranscriptionSocketServer(transcriber)
+    socket_server.start()
+
+    # Ensure cleanup on any exit (crash, signal, etc.)
+    def _cleanup():
+        try:
+            socket_server.stop()
+        except Exception:
+            pass
+        # Remove stale socket if still around
+        try:
+            if os.path.exists("/tmp/vibetotext.sock"):
+                os.unlink("/tmp/vibetotext.sock")
+        except Exception:
+            pass
+
+    atexit.register(_cleanup)
+
+    def _crash_signal_handler(signum, frame):
+        sig_name = signal.Signals(signum).name
+        error_log = os.path.join(tempfile.gettempdir(), "vibetotext_crash.log")
+        msg = f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Killed by signal {sig_name} ({signum})\n"
+        try:
+            with open(error_log, "a") as f:
+                f.write(msg)
+        except Exception:
+            pass
+        _cleanup()
+        sys.exit(1)
+
+    for sig in (signal.SIGTERM, signal.SIGHUP):
+        signal.signal(sig, _crash_signal_handler)
+
     def on_start(mode):
         try:
             # History mode: open app immediately, don't record
             if mode == "history":
                 open_history_app()
+                return
+            # Viz mode: open Word Galaxy, don't record
+            if mode == "viz":
+                open_viz()
                 return
 
             current_mode[0] = mode
@@ -193,8 +261,8 @@ def main():
 
     def on_stop(mode):
         try:
-            # History mode: nothing to do on release
-            if mode == "history":
+            # Non-recording modes: nothing to do on release
+            if mode in ("history", "viz"):
                 return
 
             audio = recorder.stop()
@@ -280,6 +348,19 @@ def main():
                 ui.process_ui_events()
             time.sleep(0.05)
     except KeyboardInterrupt:
+        print("\nExiting.")
+    except Exception:
+        error_log = os.path.join(tempfile.gettempdir(), "vibetotext_crash.log")
+        error_msg = f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Crash in main loop:\n"
+        error_msg += traceback.format_exc()
+        try:
+            with open(error_log, "a") as f:
+                f.write(error_msg + "\n")
+        except Exception:
+            pass
+        print(f"\n[CRASH] vibetotext crashed. See {error_log}")
+    finally:
+        _cleanup()
         sys.exit(0)
 
 

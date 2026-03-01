@@ -13,12 +13,11 @@ env/
 dist/
 build/
 *.manifest
-*.spec
 
-# PyInstaller
-*.spec
+# PyInstaller output (NOT the packaging/ config specs)
 build/
 dist/
+pyinstaller_build/
 
 # IDE
 .idea/
@@ -38,3 +37,12 @@ launcher.c
 
 # Electron history app
 history-app/node_modules/
+
+# Node modules
+node_modules/
+
+# Swift native app build artifacts
+native-app/.build/
+
+# 3D model files
+*.glb

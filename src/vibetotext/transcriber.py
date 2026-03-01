@@ -1,12 +1,16 @@
-"""Whisper transcription using whisper.cpp for 2-4x faster inference."""
+"""Whisper transcription — uses whisper.cpp on ARM (macOS/Apple Silicon) and faster-whisper on x86 (Linux/Windows)."""
 
 import json
+import platform
+import threading
 import numpy as np
 from pathlib import Path
-from pywhispercpp.model import Model
 import time
 
 CONFIG_PATH = Path.home() / ".vibetotext" / "config.json"
+
+# Use faster-whisper on x86, whisper.cpp on ARM (Apple Silicon)
+USE_FASTER_WHISPER = platform.machine() in ("x86_64", "AMD64", "x86")
 
 # Technical vocabulary prompt to bias Whisper toward programming terms
 TECH_PROMPT = """This is a software engineer dictating code and technical documentation.
@@ -40,10 +44,46 @@ Whisper, transcription, TTS, speech-to-text, ASR, NLP, NLU,
 regex, cron, UUID, Base64, SHA, MD5, RSA, AES, TLS, SSL, HTTPS."""
 
 
-class Transcriber:
-    """Transcribes audio using whisper.cpp (faster than Python Whisper)."""
+def _load_model(model_name: str):
+    """Load the appropriate Whisper backend based on platform."""
+    if USE_FASTER_WHISPER:
+        from faster_whisper import WhisperModel
+        print(f"Loading faster-whisper model '{model_name}' (x86 detected)...")
+        start = time.time()
+        model = WhisperModel(model_name, device="cpu", compute_type="int8")
+        print(f"Model loaded in {time.time() - start:.2f}s")
+        return model
+    else:
+        from pywhispercpp.model import Model
+        print(f"Loading whisper.cpp model '{model_name}' (ARM detected)...")
+        start = time.time()
+        model = Model(model_name, print_progress=False)
+        print(f"Model loaded in {time.time() - start:.2f}s")
+        return model
 
-    def __init__(self, model_name: str = "base", custom_words: list[str] | None = None):
+
+def _transcribe_audio(model, audio: np.ndarray, prompt: str) -> str:
+    """Run transcription with the appropriate backend."""
+    if USE_FASTER_WHISPER:
+        segments, _info = model.transcribe(
+            audio,
+            language="en",
+            initial_prompt=prompt,
+        )
+        return " ".join(segment.text for segment in segments).strip()
+    else:
+        segments = model.transcribe(
+            audio,
+            language="en",
+            initial_prompt=prompt,
+        )
+        return " ".join(segment.text for segment in segments).strip()
+
+
+class Transcriber:
+    """Transcribes audio using the optimal Whisper backend for the platform."""
+
+    def __init__(self, model_name: str = "small", custom_words: list[str] | None = None):
         """
         Initialize transcriber.
 
@@ -56,6 +96,7 @@ class Transcriber:
         self.model_name = model_name
         self._model = None
         self._last_custom_words = None
+        self._lock = threading.Lock()  # Whisper model is NOT thread-safe
 
     def _load_custom_words(self) -> list[str]:
         """Load custom dictionary from config file."""
@@ -82,15 +123,13 @@ class Transcriber:
     def model(self):
         """Lazy load the model."""
         if self._model is None:
-            print(f"Loading whisper.cpp model '{self.model_name}'...")
-            start = time.time()
-            self._model = Model(self.model_name, print_progress=False)
-            print(f"Model loaded in {time.time() - start:.2f}s")
+            self._model = _load_model(self.model_name)
         return self._model
 
     def transcribe(self, audio: np.ndarray, sample_rate: int = 16000) -> str:
         """
-        Transcribe audio to text.
+        Transcribe audio to text.  Thread-safe — only one transcription
+        runs at a time (the Whisper C backend is not reentrant).
 
         Args:
             audio: Audio data as numpy array (float32, mono)
@@ -102,37 +141,37 @@ class Transcriber:
         if len(audio) == 0:
             return ""
 
-        # Whisper expects float32 audio normalized to [-1, 1]
-        audio = audio.astype(np.float32)
+        acquired = self._lock.acquire(timeout=30)
+        if not acquired:
+            print("[WHISPER] Transcription skipped: another transcription is stuck (30s timeout)")
+            return ""
 
-        # Reload custom words from config (hot reload support)
-        custom_words = self._load_custom_words()
-        if custom_words != self._last_custom_words:
-            self._last_custom_words = custom_words
-            if custom_words:
-                print(f"[WHISPER.CPP] Custom dictionary: {len(custom_words)} words ({', '.join(custom_words)})")
+        try:
+            # Whisper expects float32 audio normalized to [-1, 1]
+            audio = audio.astype(np.float32)
 
-        prompt = self._build_prompt(custom_words)
+            # Reload custom words from config (hot reload support)
+            custom_words = self._load_custom_words()
+            backend = "FASTER-WHISPER" if USE_FASTER_WHISPER else "WHISPER.CPP"
+            if custom_words != self._last_custom_words:
+                self._last_custom_words = custom_words
+                if custom_words:
+                    print(f"[{backend}] Custom dictionary: {len(custom_words)} words ({', '.join(custom_words)})")
 
-        start = time.time()
+            prompt = self._build_prompt(custom_words)
 
-        # Transcribe with whisper.cpp
-        # Note: pywhispercpp uses initial_prompt parameter for vocabulary hints
-        segments = self.model.transcribe(
-            audio,
-            language="en",
-            initial_prompt=prompt,
-        )
+            start = time.time()
 
-        # Combine all segments into one string
-        text = " ".join(segment.text for segment in segments).strip()
+            text = _transcribe_audio(self.model, audio, prompt)
 
-        # Filter out Whisper artifacts like [end], [BLANK_AUDIO], etc.
-        text = self._filter_artifacts(text)
+            # Filter out Whisper artifacts like [end], [BLANK_AUDIO], etc.
+            text = self._filter_artifacts(text)
 
-        print(f"[WHISPER.CPP] Transcribed in {time.time() - start:.2f}s")
+            print(f"[{backend}] Transcribed in {time.time() - start:.2f}s")
 
-        return text
+            return text
+        finally:
+            self._lock.release()
 
     def _filter_artifacts(self, text: str) -> str:
         """Remove Whisper artifacts like [end], [BLANK_AUDIO], etc."""

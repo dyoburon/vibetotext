@@ -235,15 +235,39 @@ def _ensure_ui_process():
     print(f"[UI] UI process started with PID: {_ui_process.pid}")
 
 
+def _load_orb_position():
+    """Load orb position from config file."""
+    try:
+        config_path = os.path.join(os.path.expanduser("~"), ".vibetotext", "config.json")
+        if os.path.exists(config_path):
+            with open(config_path, "r") as f:
+                config = json.load(f)
+            return config.get("orb_position", "bottom-center")
+    except Exception:
+        pass
+    return "bottom-center"
+
+
 def show_recording():
-    """Show recording indicator at bottom center of screen."""
+    """Show recording indicator at configured position."""
     _ensure_ui_process()
     screen_info = _get_cursor_and_screen()
-    _write_ipc({
+    orb_pos = _load_orb_position()
+
+    ipc_data = {
         "recording": True,
         "level": 0.0,
         **screen_info,
-    })
+    }
+
+    # Pass position info to the UI process
+    if isinstance(orb_pos, dict) and "x" in orb_pos and "y" in orb_pos:
+        ipc_data["orb_x"] = orb_pos["x"]
+        ipc_data["orb_y"] = orb_pos["y"]
+    else:
+        ipc_data["orb_preset"] = orb_pos
+
+    _write_ipc(ipc_data)
 
 
 def hide_recording():

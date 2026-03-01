@@ -13,20 +13,23 @@ try:
 except ImportError:
     pass
 
-# Try to import google.generativeai (optional dependency)
+# Try to import google.genai (optional dependency)
 try:
-    import google.generativeai as genai
+    from google import genai
+    from google.genai import types as genai_types
     _genai_available = True
 except ImportError:
     genai = None
+    genai_types = None
     _genai_available = False
 
-# Configure Gemini (try both common env var names)
+# Configure Gemini client (try both common env var names)
 _api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+_client = None
 if _api_key and _genai_available:
-    genai.configure(api_key=_api_key)
+    _client = genai.Client(api_key=_api_key)
 elif not _genai_available:
-    print("[LLM] google-generativeai package not installed. Plan/cleanup modes unavailable.")
+    print("[LLM] google-genai package not installed. Plan/cleanup modes unavailable.")
 else:
     print("[LLM] Warning: No GEMINI_API_KEY or GOOGLE_API_KEY set. Plan/cleanup modes will fail.")
 
@@ -112,24 +115,22 @@ def cleanup_text(text: str) -> Optional[str]:
         Cleaned up, refined text or None if failed
     """
     if not _genai_available:
-        print("Gemini cleanup error: google-generativeai package not installed")
+        print("Gemini cleanup error: google-genai package not installed")
         return None
-    if not _api_key:
+    if not _client:
         print("Gemini cleanup error: No API key configured")
         return None
 
     try:
-        model = genai.GenerativeModel("gemini-3-flash-preview")
-
         prompt = CLEANUP_PROMPT.format(text=text)
 
-        response = model.generate_content(
-            prompt,
-            generation_config=genai.types.GenerationConfig(
-                temperature=0.3,  # Lower temperature for more focused output
+        response = _client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+            config=genai_types.GenerateContentConfig(
+                temperature=0.3,
                 max_output_tokens=2048,
             ),
-            request_options={"timeout": 30},
         )
 
         if response.text:
@@ -152,24 +153,22 @@ def generate_implementation_plan(text: str) -> Optional[str]:
         Structured markdown implementation plan or None if failed
     """
     if not _genai_available:
-        print("Gemini plan error: google-generativeai package not installed")
+        print("Gemini plan error: google-genai package not installed")
         return None
-    if not _api_key:
+    if not _client:
         print("Gemini plan error: No API key configured")
         return None
 
     try:
-        model = genai.GenerativeModel("gemini-3-flash-preview")
-
         prompt = IMPLEMENTATION_PLAN_PROMPT.format(text=text)
 
-        response = model.generate_content(
-            prompt,
-            generation_config=genai.types.GenerationConfig(
-                temperature=0.4,  # Slightly higher for creative structure
-                max_output_tokens=4096,  # Longer output for detailed plans
+        response = _client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+            config=genai_types.GenerateContentConfig(
+                temperature=0.4,
+                max_output_tokens=4096,
             ),
-            request_options={"timeout": 30},
         )
 
         if response.text:

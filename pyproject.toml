@@ -20,7 +20,7 @@ dependencies = [
 
 [project.optional-dependencies]
 gemini = [
-    "google-generativeai",
+    "google-genai",
 ]
 windows = [
     "pystray",

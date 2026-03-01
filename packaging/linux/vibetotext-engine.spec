@@ -32,7 +32,7 @@ a = Analysis(
         'pynput.mouse._xorg',
         'dotenv',
         # Optional Gemini support
-        'google.generativeai',
+        'google.genai',
         # SQLite for history
         'sqlite3',
         # Tkinter for UI

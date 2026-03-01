@@ -24,7 +24,7 @@ a = Analysis(
         'pywhispercpp',
         'pywhispercpp.model',
         # Google AI for LLM
-        'google.generativeai',
+        'google.genai',
         # PyObjC for macOS UI
         'AppKit',
         'Foundation',

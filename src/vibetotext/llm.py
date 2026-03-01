@@ -128,7 +128,8 @@ def cleanup_text(text: str) -> Optional[str]:
             generation_config=genai.types.GenerationConfig(
                 temperature=0.3,  # Lower temperature for more focused output
                 max_output_tokens=2048,
-            )
+            ),
+            request_options={"timeout": 30},
         )
 
         if response.text:
@@ -167,7 +168,8 @@ def generate_implementation_plan(text: str) -> Optional[str]:
             generation_config=genai.types.GenerationConfig(
                 temperature=0.4,  # Slightly higher for creative structure
                 max_output_tokens=4096,  # Longer output for detailed plans
-            )
+            ),
+            request_options={"timeout": 30},
         )
 
         if response.text:

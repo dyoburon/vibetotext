@@ -1,7 +1,9 @@
 """Main CLI entry point."""
 
 import argparse
+import atexit
 import os
+import signal
 import subprocess
 import sys
 import tempfile
@@ -16,6 +18,7 @@ from vibetotext.greppy import search_files, format_files_for_context
 from vibetotext.llm import cleanup_text, generate_implementation_plan
 from vibetotext.output import paste_at_cursor
 from vibetotext.history import TranscriptionHistory
+from vibetotext.socket_server import TranscriptionSocketServer
 
 
 def open_history_app():
@@ -193,6 +196,40 @@ def main():
     _ = transcriber.model
     print("[DEBUG] Model loaded, defining callbacks...", flush=True)
 
+    # Start socket server for external transcription (e.g., Jarvis)
+    socket_server = TranscriptionSocketServer(transcriber)
+    socket_server.start()
+
+    # Ensure cleanup on any exit (crash, signal, etc.)
+    def _cleanup():
+        try:
+            socket_server.stop()
+        except Exception:
+            pass
+        # Remove stale socket if still around
+        try:
+            if os.path.exists("/tmp/vibetotext.sock"):
+                os.unlink("/tmp/vibetotext.sock")
+        except Exception:
+            pass
+
+    atexit.register(_cleanup)
+
+    def _crash_signal_handler(signum, frame):
+        sig_name = signal.Signals(signum).name
+        error_log = os.path.join(tempfile.gettempdir(), "vibetotext_crash.log")
+        msg = f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Killed by signal {sig_name} ({signum})\n"
+        try:
+            with open(error_log, "a") as f:
+                f.write(msg)
+        except Exception:
+            pass
+        _cleanup()
+        sys.exit(1)
+
+    for sig in (signal.SIGTERM, signal.SIGHUP):
+        signal.signal(sig, _crash_signal_handler)
+
     def on_start(mode):
         try:
             # History mode: open app immediately, don't record
@@ -305,6 +342,19 @@ def main():
                 ui.process_ui_events()
             time.sleep(0.05)
     except KeyboardInterrupt:
+        print("\nExiting.")
+    except Exception:
+        error_log = os.path.join(tempfile.gettempdir(), "vibetotext_crash.log")
+        error_msg = f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Crash in main loop:\n"
+        error_msg += traceback.format_exc()
+        try:
+            with open(error_log, "a") as f:
+                f.write(error_msg + "\n")
+        except Exception:
+            pass
+        print(f"\n[CRASH] vibetotext crashed. See {error_log}")
+    finally:
+        _cleanup()
         sys.exit(0)
 
 

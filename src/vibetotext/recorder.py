@@ -2,6 +2,7 @@
 
 import numpy as np
 import sounddevice as sd
+from enum import Enum, auto
 from typing import Optional
 import threading
 import queue
@@ -36,6 +37,7 @@ class AudioRecorder:
         self.sample_rate = sample_rate
         self.device = device
         self.recording = False
+        self.stream = None  # Guard against double-stop
         self.audio_queue = queue.Queue()
         self._audio_data = []
         self.on_level = None  # Callback for audio level updates
@@ -144,20 +146,29 @@ class AudioRecorder:
         _log("STOP: Setting recording=False")
         self.recording = False
 
-        # Stop stream with timeout detection
-        _log("STOP: Calling stream.stop()...")
+        # Guard: if stream doesn't exist or was already stopped, return empty
+        if self.stream is None:
+            _log("STOP: No stream to stop (already stopped or never started)")
+            return np.array([], dtype=np.float32)
+
+        # Grab and clear the reference so a concurrent call can't double-stop
+        stream = self.stream
+        self.stream = None
+
+        # Abort stream (non-blocking, avoids waiting for audio callback)
+        _log("STOP: Calling stream.abort()...")
         stop_start = time.time()
         try:
-            self.stream.stop()
+            stream.abort()
             stop_elapsed = time.time() - stop_start
-            _log(f"STOP: stream.stop() completed in {stop_elapsed:.3f}s")
+            _log(f"STOP: stream.abort() completed in {stop_elapsed:.3f}s")
         except Exception as e:
-            _log(f"STOP: stream.stop() FAILED: {e}")
+            _log(f"STOP: stream.abort() FAILED: {e}")
 
         _log("STOP: Calling stream.close()...")
         close_start = time.time()
         try:
-            self.stream.close()
+            stream.close()
             close_elapsed = time.time() - close_start
             _log(f"STOP: stream.close() completed in {close_elapsed:.3f}s")
         except Exception as e:
@@ -182,45 +193,155 @@ class AudioRecorder:
         return audio
 
 
+class _Msg(Enum):
+    """Message types for the HotkeyListener worker queue."""
+    START = auto()
+    STOP = auto()
+    TIMEOUT = auto()
+    SHUTDOWN = auto()
+
+
 class HotkeyListener:
-    """Listens for multiple hotkeys to toggle recording."""
+    """Listens for multiple hotkeys to toggle recording.
+
+    Architecture: queue-based actor model (deadlock-free by construction).
+
+    The pynput listener thread and timer thread are pure message producers
+    that never block.  A single worker thread is the sole consumer,
+    processing start/stop/timeout messages sequentially.  Because the
+    worker processes messages in FIFO order, recorder.start() always
+    completes before recorder.stop() can begin — no races, no locks
+    needed on state.
+
+    State machine (owned exclusively by the worker thread):
+        IDLE  ---(START msg)---> RECORDING
+        RECORDING ---(STOP/TIMEOUT msg)---> PROCESSING
+        PROCESSING ---(on_stop complete)---> IDLE
+    """
 
     def __init__(self, hotkeys: dict = None, max_recording_seconds: int = 60):
-        """
-        Args:
-            hotkeys: Dict mapping hotkey strings to mode names.
-                     e.g. {"ctrl+shift": "transcribe", "cmd+shift": "greppy"}
-            max_recording_seconds: Auto-stop recording after this many seconds (default: 60)
-        """
         if hotkeys is None:
             hotkeys = {"ctrl+shift": "transcribe"}
         self.hotkeys = hotkeys
         self.max_recording_seconds = max_recording_seconds
-        self.on_start = None  # Called with mode name
-        self.on_stop = None   # Called with mode name
+        self.on_start = None
+        self.on_stop = None
+
+        # Pynput thread state (only touched by pynput thread — no lock needed)
         self._pressed = set()
-        self._recording = False
+
+        # Worker thread state (only touched by worker thread — no lock needed)
+        self._state = "idle"  # "idle", "recording", "processing"
         self._active_mode = None
+        self._active_parts = None
         self._timeout_timer = None
-        self._lock = threading.Lock()  # Prevent race condition on key release
+
+        # The queue is the only synchronization primitive
+        self._queue = queue.Queue()
 
     def _cancel_timeout(self):
-        """Cancel any pending timeout."""
+        """Cancel any pending timeout timer."""
         if self._timeout_timer:
             self._timeout_timer.cancel()
             self._timeout_timer = None
 
-    def _timeout_stop(self):
-        """Called when recording times out."""
-        if self._recording:
-            print(f"\n[TIMEOUT] Recording exceeded {self.max_recording_seconds}s, auto-stopping...")
-            mode = self._active_mode
-            self._recording = False
-            self._active_mode = None
-            self._active_parts = None
-            self._pressed.clear()
+    def _handle_start(self, mode, parts):
+        """Process a START message. Only called by worker thread."""
+        if self._state != "idle":
+            _log(f"WORKER: Ignoring START({mode}), state={self._state}")
+            return
+
+        # Non-recording modes: fire callback immediately, stay idle
+        if mode in ("history", "viz"):
+            _log(f"WORKER: Instant mode={mode}, calling on_start")
+            if self.on_start:
+                try:
+                    self.on_start(mode)
+                except Exception as e:
+                    _log(f"WORKER: on_start({mode}) raised: {e}")
+            return
+
+        self._state = "recording"
+        self._active_mode = mode
+        self._active_parts = parts
+        _log(f"WORKER: state -> recording, mode={mode}")
+
+        # Start timeout timer (enqueues TIMEOUT, never calls us directly)
+        self._cancel_timeout()
+        self._timeout_timer = threading.Timer(
+            self.max_recording_seconds,
+            lambda: self._queue.put_nowait((_Msg.TIMEOUT, None))
+        )
+        self._timeout_timer.daemon = True
+        self._timeout_timer.start()
+
+        # Call on_start — runs to completion before any STOP is processed
+        if self.on_start:
+            try:
+                self.on_start(mode)
+            except Exception as e:
+                _log(f"WORKER: on_start({mode}) raised: {e}")
+
+    def _handle_stop(self, key_name):
+        """Process a STOP message. Only called by worker thread."""
+        if self._state != "recording":
+            return
+
+        # Only stop if the released key is part of the active hotkey
+        if self._active_parts and key_name not in self._active_parts:
+            return
+
+        self._do_stop()
+
+    def _handle_timeout(self):
+        """Process a TIMEOUT message. Only called by worker thread."""
+        if self._state != "recording":
+            return  # Already stopped, stale timeout
+        _log(f"TIMEOUT: Recording exceeded {self.max_recording_seconds}s")
+        print(f"\n[TIMEOUT] Recording exceeded {self.max_recording_seconds}s, auto-stopping...")
+        self._do_stop()
+
+    def _do_stop(self):
+        """Core stop logic shared by key-release and timeout. Worker thread only."""
+        self._cancel_timeout()
+        mode = self._active_mode
+        self._state = "processing"
+        self._active_mode = None
+        self._active_parts = None
+        _log(f"WORKER: state -> processing, mode={mode}")
+        print(f"[HOTKEY] Stopping recording, mode={mode}")
+
+        try:
             if self.on_stop:
+                stop_start = time.time()
                 self.on_stop(mode)
+                _log(f"WORKER: on_stop completed in {time.time() - stop_start:.3f}s")
+        except Exception as e:
+            _log(f"WORKER: on_stop raised: {e}")
+        finally:
+            self._state = "idle"
+            _log("WORKER: state -> idle")
+
+    def _process_loop(self):
+        """Worker thread main loop. Processes messages sequentially."""
+        _log("WORKER: Process loop started")
+        while True:
+            try:
+                msg_type, payload = self._queue.get()
+            except Exception:
+                continue
+
+            if msg_type == _Msg.SHUTDOWN:
+                _log("WORKER: Shutdown received")
+                break
+            elif msg_type == _Msg.START:
+                mode, parts = payload
+                self._handle_start(mode, parts)
+            elif msg_type == _Msg.STOP:
+                key_name = payload
+                self._handle_stop(key_name)
+            elif msg_type == _Msg.TIMEOUT:
+                self._handle_timeout()
 
     def start(self, on_start, on_stop):
         """Start listening for hotkeys."""
@@ -235,37 +356,30 @@ class HotkeyListener:
             parts = set(hotkey.lower().split("+"))
             self._parsed_hotkeys[mode] = parts
 
+        # Start the worker thread before the listener
+        self._worker_thread = threading.Thread(
+            target=self._process_loop, daemon=True
+        )
+        self._worker_thread.start()
+
         def on_press(key):
             try:
                 key_name = key.char.lower() if hasattr(key, 'char') and key.char else key.name.lower()
             except AttributeError:
                 return
 
+            # Key-repeat guard: ignore if already pressed
+            if key_name in self._pressed:
+                return
             self._pressed.add(key_name)
 
-            # Check if any hotkey combo is pressed (check longer combos first)
-            if not self._recording:
-                # Sort by length descending to match most specific first
-                for mode, parts in sorted(self._parsed_hotkeys.items(),
-                                          key=lambda x: len(x[1]), reverse=True):
-                    if parts.issubset(self._pressed):
-                        self._recording = True
-                        self._active_mode = mode
-                        self._active_parts = parts
-                        _log(f"HOTKEY: Pressed {key_name}, starting recording mode={mode}")
-
-                        # Start timeout timer
-                        self._cancel_timeout()
-                        self._timeout_timer = threading.Timer(
-                            self.max_recording_seconds,
-                            self._timeout_stop
-                        )
-                        self._timeout_timer.daemon = True
-                        self._timeout_timer.start()
-
-                        if self.on_start:
-                            self.on_start(mode)
-                        break
+            # Check if any hotkey combo is fully pressed
+            for mode, parts in sorted(self._parsed_hotkeys.items(),
+                                       key=lambda x: len(x[1]), reverse=True):
+                if parts.issubset(self._pressed):
+                    _log(f"HOTKEY: Pressed {key_name}, enqueuing START mode={mode}")
+                    self._queue.put_nowait((_Msg.START, (mode, parts)))
+                    break
 
         def on_release(key):
             try:
@@ -273,35 +387,18 @@ class HotkeyListener:
             except AttributeError:
                 return
 
-            # Use lock to prevent race condition when both hotkey parts release at once
-            # Invoke on_stop OUTSIDE the lock to avoid deadlock with stream.stop()
-            should_stop = False
-            mode = None
-            with self._lock:
-                # If any hotkey part is released while recording, stop
-                if self._recording and self._active_parts and key_name in self._active_parts:
-                    self._cancel_timeout()
-                    mode = self._active_mode
-                    self._recording = False
-                    self._active_mode = None
-                    self._active_parts = None
-                    # Clear pressed set to avoid stale state
-                    self._pressed.clear()
-                    should_stop = True
-                else:
-                    self._pressed.discard(key_name)
-
-            if should_stop:
-                _log(f"HOTKEY: Released {key_name}, stopping recording mode={mode}")
-                print(f"[HOTKEY] Stopping recording, mode={mode}")
-                if self.on_stop:
-                    _log(f"HOTKEY: Calling on_stop callback...")
-                    stop_start = time.time()
-                    self.on_stop(mode)
-                    stop_elapsed = time.time() - stop_start
-                    _log(f"HOTKEY: on_stop callback completed in {stop_elapsed:.3f}s")
+            self._pressed.discard(key_name)
+            self._queue.put_nowait((_Msg.STOP, key_name))
 
         self.listener = keyboard.Listener(on_press=on_press, on_release=on_release)
         self.listener.start()
         _log(f"LISTENER: Started with hotkeys: {list(self._parsed_hotkeys.keys())}")
         return self.listener
+
+    def stop(self):
+        """Stop the listener and worker thread."""
+        self._queue.put_nowait((_Msg.SHUTDOWN, None))
+        if hasattr(self, 'listener'):
+            self.listener.stop()
+        if hasattr(self, '_worker_thread'):
+            self._worker_thread.join(timeout=5)

@@ -95,6 +95,7 @@ class Transcriber:
         self.model_name = model_name
         self._model = None
         self._last_custom_words = None
+        self._lock = threading.Lock()  # Whisper model is NOT thread-safe
 
     def _load_custom_words(self) -> list[str]:
         """Load custom dictionary from config file."""
@@ -126,7 +127,8 @@ class Transcriber:
 
     def transcribe(self, audio: np.ndarray, sample_rate: int = 16000) -> str:
         """
-        Transcribe audio to text.
+        Transcribe audio to text.  Thread-safe — only one transcription
+        runs at a time (the Whisper C backend is not reentrant).
 
         Args:
             audio: Audio data as numpy array (float32, mono)
@@ -138,29 +140,37 @@ class Transcriber:
         if len(audio) == 0:
             return ""
 
-        # Whisper expects float32 audio normalized to [-1, 1]
-        audio = audio.astype(np.float32)
+        acquired = self._lock.acquire(timeout=30)
+        if not acquired:
+            print("[WHISPER] Transcription skipped: another transcription is stuck (30s timeout)")
+            return ""
 
-        # Reload custom words from config (hot reload support)
-        custom_words = self._load_custom_words()
-        backend = "FASTER-WHISPER" if USE_FASTER_WHISPER else "WHISPER.CPP"
-        if custom_words != self._last_custom_words:
-            self._last_custom_words = custom_words
-            if custom_words:
-                print(f"[{backend}] Custom dictionary: {len(custom_words)} words ({', '.join(custom_words)})")
+        try:
+            # Whisper expects float32 audio normalized to [-1, 1]
+            audio = audio.astype(np.float32)
 
-        prompt = self._build_prompt(custom_words)
+            # Reload custom words from config (hot reload support)
+            custom_words = self._load_custom_words()
+            backend = "FASTER-WHISPER" if USE_FASTER_WHISPER else "WHISPER.CPP"
+            if custom_words != self._last_custom_words:
+                self._last_custom_words = custom_words
+                if custom_words:
+                    print(f"[{backend}] Custom dictionary: {len(custom_words)} words ({', '.join(custom_words)})")
 
-        start = time.time()
+            prompt = self._build_prompt(custom_words)
 
-        text = _transcribe_audio(self.model, audio, prompt)
+            start = time.time()
 
-        # Filter out Whisper artifacts like [end], [BLANK_AUDIO], etc.
-        text = self._filter_artifacts(text)
+            text = _transcribe_audio(self.model, audio, prompt)
 
-        print(f"[{backend}] Transcribed in {time.time() - start:.2f}s")
+            # Filter out Whisper artifacts like [end], [BLANK_AUDIO], etc.
+            text = self._filter_artifacts(text)
 
-        return text
+            print(f"[{backend}] Transcribed in {time.time() - start:.2f}s")
+
+            return text
+        finally:
+            self._lock.release()
 
     def _filter_artifacts(self, text: str) -> str:
         """Remove Whisper artifacts like [end], [BLANK_AUDIO], etc."""

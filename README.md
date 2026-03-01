@@ -1,6 +1,6 @@
 # VibeToText
 
-Voice-to-text for developers with AI-powered cleanup and detailed analytics.
+Voice-to-text for developers featuring AI-powered cleanup and detailed analytics.
 
 ![Transcribe View](docs/transcribe.png)
 
@@ -17,19 +17,25 @@ Voice-to-text for developers with AI-powered cleanup and detailed analytics.
 - Technical vocabulary bias for programming terms
 - Auto-paste to cursor
 
-## Analytics
+**Cosmic Visualizations**
+- Real-time 3D entity generation based on voice "vibe"
+- Trellis-based mesh generation for complex structures
+- GLB export for use in external tools
+
+## Analytics & Settings
 
 ![Analytics Dashboard](docs/analytics.png)
 
-Track your voice coding productivity:
+Press `Cmd+Comma` (macOS) or `Ctrl+Comma` (Windows) to open the **History & Settings** window.
 
-| Metric | Description |
-|--------|-------------|
-| **WPM** | Words per minute across sessions |
-| **Time Saved** | Dictation vs typing (40 WPM baseline) |
-| **Filler Words** | Track "um", "like", "basically" usage |
-| **Vocabulary Diversity** | Unique words / total words richness |
-| **Top Words & Phrases** | Frequency analysis per mode |
+**Statistics Dashboard**
+- **Total Chats**: Number of recording sessions.
+- **Total Words**: Cumulative dictation volume.
+- **Top Words**: Frequency analysis excluding common stopwords.
+
+**Management**
+- **Recent History**: Review and copy previous transcriptions.
+- **Microphone Selection**: Switch audio input devices directly from the UI.
 
 ## Install
 
@@ -37,7 +43,17 @@ Track your voice coding productivity:
 pip install -e .
 ```
 
-Optionally set `GEMINI_API_KEY` in `.env` to enable cleanup/plan modes.
+Optionally set `GEMINI_API_KEY` in a `.env` file to enable cleanup/plan modes.
+
+### Windows
+
+Run the build script to generate standalone executables:
+
+```powershell
+.\build_windows.bat
+```
+
+The executables will be available in the `dist/` folder.
 
 ## Usage
 

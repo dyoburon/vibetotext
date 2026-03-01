@@ -40,6 +40,29 @@ const NEGATIVE_WORDS = new Set([
   'confused', 'confusing', 'impossible', 'never', 'crash', 'crashed', 'missing', 'lost', 'stupid', 'mess'
 ]);
 
+// Topic classification rules — order matters, first match wins
+const TOPIC_RULES = [
+  { topic: 'Bug Fix',       keywords: ['fix', 'bug', 'error', 'crash', 'broken', 'debug', 'patch', 'issue', 'wrong', 'failing', 'stacktrace', 'traceback', 'exception'] },
+  { topic: 'Testing',       keywords: ['test', 'spec', 'assert', 'expect', 'coverage', 'mock', 'stub', 'jest', 'pytest', 'unittest'] },
+  { topic: 'Refactoring',   keywords: ['refactor', 'rename', 'restructure', 'reorganize', 'simplify', 'extract', 'inline', 'deduplicate', 'clean up', 'cleanup'] },
+  { topic: 'UI / Design',   keywords: ['style', 'css', 'layout', 'design', 'ui', 'ux', 'color', 'font', 'animation', 'responsive', 'theme', 'dark mode', 'component'] },
+  { topic: 'DevOps',        keywords: ['deploy', 'ci', 'cd', 'docker', 'pipeline', 'kubernetes', 'nginx', 'server', 'infrastructure', 'config', 'env', 'environment'] },
+  { topic: 'Documentation', keywords: ['doc', 'readme', 'comment', 'document', 'explain', 'tutorial', 'guide', 'wiki', 'jsdoc', 'docstring'] },
+  { topic: 'Code Review',   keywords: ['review', 'pr', 'pull request', 'merge', 'approve', 'feedback', 'suggestion', 'nit'] },
+  { topic: 'Planning',      keywords: ['plan', 'architecture', 'scope', 'estimate', 'roadmap', 'design doc', 'rfc', 'proposal', 'milestone', 'sprint'] },
+  { topic: 'Feature',       keywords: ['add', 'feature', 'implement', 'create', 'build', 'new', 'integrate', 'endpoint', 'api', 'functionality'] },
+];
+
+function classifyTopic(text) {
+  const lower = text.toLowerCase();
+  for (const rule of TOPIC_RULES) {
+    for (const kw of rule.keywords) {
+      if (lower.includes(kw)) return rule.topic;
+    }
+  }
+  return 'General';
+}
+
 // Daily word goal (could be made configurable later)
 const DAILY_WORD_GOAL = 500;
 const WEEKLY_WORD_GOAL = 2500;
@@ -127,6 +150,9 @@ function processData(entries) {
   // N-grams (2 and 3 word phrases)
   const bigrams = {};
   const trigrams = {};
+
+  // Topic speed & mood aggregation
+  const topicAgg = {};
 
   // Session durations for histogram
   const sessionDurations = [];
@@ -226,7 +252,9 @@ function processData(entries) {
     if (!sentimentByDay[dateKey]) {
       sentimentByDay[dateKey] = { scoreSum: 0, count: 0 };
     }
+    let entrySentiment = null;
     if (entry.sentiment != null) {
+      entrySentiment = entry.sentiment;
       sentimentByDay[dateKey].scoreSum += entry.sentiment;
       sentimentByDay[dateKey].count++;
     } else {
@@ -237,8 +265,24 @@ function processData(entries) {
         if (NEGATIVE_WORDS.has(word)) negative++;
       });
       const fallbackScore = words.length > 0 ? (positive - negative) / Math.sqrt(words.length) : 0;
+      entrySentiment = fallbackScore;
       sentimentByDay[dateKey].scoreSum += fallbackScore;
       sentimentByDay[dateKey].count++;
+    }
+
+    // Topic classification & aggregation
+    const topic = classifyTopic(entry.text || '');
+    if (!topicAgg[topic]) {
+      topicAgg[topic] = { wpmSum: 0, wpmCount: 0, sentimentSum: 0, sentimentCount: 0, sessions: 0 };
+    }
+    topicAgg[topic].sessions++;
+    if (entry.wpm) {
+      topicAgg[topic].wpmSum += entry.wpm;
+      topicAgg[topic].wpmCount++;
+    }
+    if (entrySentiment != null) {
+      topicAgg[topic].sentimentSum += entrySentiment;
+      topicAgg[topic].sentimentCount++;
     }
   });
 
@@ -429,7 +473,19 @@ function processData(entries) {
   // This week's words for weekly goal
   const thisWeekWords = thisWeekData.words;
 
+  // Build topic speed & mood array (only topics with WPM data)
+  const topicSpeedMood = Object.entries(topicAgg)
+    .filter(([_, d]) => d.wpmCount > 0)
+    .map(([topic, d]) => ({
+      topic,
+      avgWpm: Math.round(d.wpmSum / d.wpmCount),
+      avgSentiment: d.sentimentCount > 0 ? d.sentimentSum / d.sentimentCount : 0,
+      sessions: d.sessions,
+    }))
+    .sort((a, b) => b.avgWpm - a.avgWpm);
+
   return {
+    topicSpeedMood,
     activityMatrix,
     dailyArray,
     dailyData,
@@ -1890,12 +1946,133 @@ function renderSentimentChart(containerId, sentimentArray) {
   neg.append('span').text('Negative');
 }
 
+// Render Topic Speed & Mood horizontal bar chart
+function renderTopicSpeedMood(containerId, topicSpeedMood) {
+  const container = d3.select(containerId);
+  container.html('');
+
+  if (!topicSpeedMood || topicSpeedMood.length === 0) {
+    container.append('div').attr('class', 'analytics-empty').text('No topic data yet');
+    return;
+  }
+
+  const margin = { top: 10, right: 80, bottom: 20, left: 100 };
+  const barHeight = 28;
+  const barGap = 6;
+  const height = topicSpeedMood.length * (barHeight + barGap) - barGap;
+  const width = container.node().getBoundingClientRect().width - margin.left - margin.right;
+
+  if (width <= 0) return;
+
+  const svg = container.append('svg')
+    .attr('width', width + margin.left + margin.right)
+    .attr('height', height + margin.top + margin.bottom)
+    .append('g')
+    .attr('transform', `translate(${margin.left},${margin.top})`);
+
+  // Scales
+  const x = d3.scaleLinear()
+    .domain([0, d3.max(topicSpeedMood, d => d.avgWpm) * 1.1])
+    .range([0, width]);
+
+  const y = d3.scaleBand()
+    .domain(topicSpeedMood.map(d => d.topic))
+    .range([0, height])
+    .padding(0.15);
+
+  // Sentiment color scale: use actual data range so small differences are visible
+  const sentiments = topicSpeedMood.map(d => d.avgSentiment);
+  const sMin = d3.min(sentiments);
+  const sMax = d3.max(sentiments);
+  const sMid = (sMin + sMax) / 2;
+  const sentimentColor = d3.scaleLinear()
+    .domain([sMin, sMid, sMax])
+    .range(['#6e6e73', '#a08520', '#fbbf24'])
+    .clamp(true);
+
+  // Bars
+  svg.selectAll('.topic-bar')
+    .data(topicSpeedMood)
+    .enter()
+    .append('rect')
+    .attr('class', 'topic-bar')
+    .attr('x', 0)
+    .attr('y', d => y(d.topic))
+    .attr('width', d => x(d.avgWpm))
+    .attr('height', y.bandwidth())
+    .attr('rx', 4)
+    .attr('fill', d => sentimentColor(d.avgSentiment))
+    .attr('opacity', 0.85)
+    .on('mouseover', function(event, d) {
+      d3.select(this).attr('opacity', 1);
+      const sentLabel = d.avgSentiment >= 0.05 ? 'positive' : d.avgSentiment <= -0.05 ? 'negative' : 'neutral';
+      showTooltip(event,
+        `<strong>${d.topic}</strong><br/>` +
+        `${d.avgWpm} WPM avg<br/>` +
+        `Sentiment: ${d.avgSentiment >= 0 ? '+' : ''}${d.avgSentiment.toFixed(2)} (${sentLabel})<br/>` +
+        `${d.sessions} session${d.sessions !== 1 ? 's' : ''}`
+      );
+    })
+    .on('mouseout', function() {
+      d3.select(this).attr('opacity', 0.85);
+      hideTooltip();
+    });
+
+  // WPM labels at end of bars
+  svg.selectAll('.wpm-label')
+    .data(topicSpeedMood)
+    .enter()
+    .append('text')
+    .attr('x', d => x(d.avgWpm) + 6)
+    .attr('y', d => y(d.topic) + y.bandwidth() / 2)
+    .attr('dominant-baseline', 'middle')
+    .attr('fill', CHART_COLORS.muted)
+    .attr('font-size', '11px')
+    .text(d => `${d.avgWpm}`);
+
+  // Topic labels on y-axis
+  svg.selectAll('.topic-label')
+    .data(topicSpeedMood)
+    .enter()
+    .append('text')
+    .attr('x', -8)
+    .attr('y', d => y(d.topic) + y.bandwidth() / 2)
+    .attr('text-anchor', 'end')
+    .attr('dominant-baseline', 'middle')
+    .attr('fill', '#e4e4e7')
+    .attr('font-size', '11px')
+    .text(d => d.topic);
+
+  // Legend below chart
+  const legend = container.append('div')
+    .style('display', 'flex')
+    .style('align-items', 'center')
+    .style('justify-content', 'center')
+    .style('gap', '6px')
+    .style('margin-top', '8px')
+    .style('font-size', '9px')
+    .style('color', CHART_COLORS.muted);
+
+  legend.append('span').text('negative');
+  // Small gradient swatch
+  const gradWidth = 80;
+  const gradSvg = legend.append('svg').attr('width', gradWidth).attr('height', 10);
+  const gradId = 'sentiment-grad';
+  const defs = gradSvg.append('defs');
+  const lg = defs.append('linearGradient').attr('id', gradId);
+  lg.append('stop').attr('offset', '0%').attr('stop-color', '#6e6e73');
+  lg.append('stop').attr('offset', '50%').attr('stop-color', '#a08520');
+  lg.append('stop').attr('offset', '100%').attr('stop-color', '#fbbf24');
+  gradSvg.append('rect').attr('width', gradWidth).attr('height', 10).attr('rx', 3).attr('fill', `url(#${gradId})`);
+  legend.append('span').text('positive');
+}
+
 // Main render function called from renderer.js
 function renderAnalytics(entries) {
   console.log('[Analytics] renderAnalytics called with', entries ? entries.length : 0, 'entries');
 
   const allContainers = [
-    '#streaks-card', '#records-card', '#goals-card', '#sessions-today',
+    '#streaks-card', '#records-card', '#topic-speed-mood', '#goals-card', '#sessions-today',
     '#activity-heatmap', '#activity-yearly', '#peak-hours',
     '#words-chart', '#time-saved-chart', '#wpm-chart', '#mode-donut',
     '#period-comparison', '#filler-words', '#common-phrases',
@@ -1917,6 +2094,7 @@ function renderAnalytics(entries) {
   // Productivity & Gamification
   renderStreaks('#streaks-card', data.currentStreak, data.longestStreak);
   renderRecords('#records-card', data.maxWpm, data.maxWordsInDay, data.longestSession);
+  renderTopicSpeedMood('#topic-speed-mood', data.topicSpeedMood);
   renderGoals('#goals-card', data.todayData, data.thisWeekWords);
   // Original charts - only render the visible heatmap
   const yearlyTab = document.querySelector('.activity-tab[data-view="yearly"]');
@@ -1962,6 +2140,7 @@ window.addEventListener('resize', () => {
     const analyticsPanel = document.getElementById('analytics-panel');
     if (analyticsPanel && analyticsPanel.style.display !== 'none' && cachedAnalyticsData) {
       // Re-render responsive charts (heatmaps are fixed size, no need to re-render)
+      renderTopicSpeedMood('#topic-speed-mood', cachedAnalyticsData.topicSpeedMood);
       renderPeakHours('#peak-hours', cachedAnalyticsData.activityMatrix);
       renderWordsChart('#words-chart', cachedAnalyticsData.dailyArray);
       renderTimeSavedChart('#time-saved-chart', cachedAnalyticsData.dailyArray);

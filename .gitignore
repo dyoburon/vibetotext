@@ -30,6 +30,9 @@ pyinstaller_build/
 .DS_Store
 *.app
 
+# Claude
+CLAUDE.md
+
 # Project specific
 *.output
 launcher.c

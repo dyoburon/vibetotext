@@ -2,6 +2,17 @@
 
 Voice-to-text for developers featuring AI-powered cleanup and detailed analytics.
 
+## Components
+
+| Component | Directory | Stack |
+|-----------|-----------|-------|
+| **Python CLI** | `src/vibetotext/` | Python 3.9+, Whisper.cpp, sounddevice, pynput |
+| **Windows native app** | `windows-native/` | C# .NET 9, WPF, NAudio, Whisper.net |
+| **macOS native app** | `macos-native/` | Swift 5.9, Metal, macOS 14+ |
+| **Electron history app** | `history-app/` | Electron 28, better-sqlite3, D3.js |
+
+All implementations share the same SQLite database at `~/.vibetotext/history.db`.
+
 ## Features
 
 **Multi-Mode Hotkeys**
@@ -47,25 +58,45 @@ A living 3D world that reacts to your voice in real time. As you dictate, a proc
 - **Seasons & day/night** — A 15-second day/night cycle with shifting sky colors, dynamic lighting, and fireflies at night.
 - **GLB export** — Export generated 3D entities for use in external tools.
 
-> Requires macOS 14+ (Sonoma). Built with Swift, Metal, and Three.js. The cosmic visualization is a native macOS app and is not available on Windows or Linux.
+> Requires macOS 14+ (Sonoma). The cosmic visualization is part of the native macOS app in `macos-native/`, built with Swift and Metal. Not available on Windows or Linux.
 
 ## Install
 
+### Python CLI
+
 ```bash
 pip install -e .
+pip install -e ".[gemini,dev]"   # with Gemini + dev dependencies
 ```
-
 
 Optionally set `GEMINI_API_KEY` in a `.env` file to enable cleanup/plan modes. You can copy the `.env.example` file and then add your key.
 
-### Platform Builds
+### Windows Native App
 
 ```bash
+cd windows-native
+build.bat                        # or: dotnet build src/VibeToText/VibeToText.csproj
+```
+
+### macOS Native App
+
+```bash
+cd macos-native
+swift build
+```
+
+Requires macOS 14+ (Sonoma) and Swift 5.9+.
+
+### Platform Builds (Python app)
+
+These scripts package the Python CLI into standalone executables via PyInstaller:
+
+```bash
+# Windows (from project root) → dist/vibetotext-engine.exe, dist/vibetotext-ui.exe
+build_windows.bat
+
 # macOS
 bash packaging/macos/build_macos.sh
-
-# Windows
-packaging\windows\build_windows.bat
 
 # Linux
 bash packaging/linux/build_linux.sh

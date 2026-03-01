@@ -2,8 +2,6 @@
 
 Voice-to-text for developers featuring AI-powered cleanup and detailed analytics.
 
-![Transcribe View](docs/transcribe.png)
-
 ## Features
 
 **Multi-Mode Hotkeys**

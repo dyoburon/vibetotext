@@ -203,21 +203,25 @@ def main():
     print("[DEBUG] Model loaded, defining callbacks...", flush=True)
 
     # Start socket server for external transcription (e.g., Jarvis)
-    socket_server = TranscriptionSocketServer(transcriber)
-    socket_server.start()
+    # Unix domain sockets are not available on Windows
+    socket_server = None
+    if sys.platform != "win32":
+        socket_server = TranscriptionSocketServer(transcriber)
+        socket_server.start()
 
     # Ensure cleanup on any exit (crash, signal, etc.)
     def _cleanup():
-        try:
-            socket_server.stop()
-        except Exception:
-            pass
-        # Remove stale socket if still around
-        try:
-            if os.path.exists("/tmp/vibetotext.sock"):
-                os.unlink("/tmp/vibetotext.sock")
-        except Exception:
-            pass
+        if socket_server:
+            try:
+                socket_server.stop()
+            except Exception:
+                pass
+            # Remove stale socket if still around
+            try:
+                if os.path.exists("/tmp/vibetotext.sock"):
+                    os.unlink("/tmp/vibetotext.sock")
+            except Exception:
+                pass
 
     atexit.register(_cleanup)
 
@@ -233,7 +237,10 @@ def main():
         _cleanup()
         sys.exit(1)
 
-    for sig in (signal.SIGTERM, signal.SIGHUP):
+    _signals = [signal.SIGTERM]
+    if hasattr(signal, "SIGHUP"):
+        _signals.append(signal.SIGHUP)
+    for sig in _signals:
         signal.signal(sig, _crash_signal_handler)
 
     def on_start(mode):

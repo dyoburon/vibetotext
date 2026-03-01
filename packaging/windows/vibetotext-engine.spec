@@ -37,6 +37,9 @@ a = Analysis(
         'PIL.ImageDraw',
         'PIL.ImageFont',
         'dotenv',
+        # Sentiment analysis
+        'vaderSentiment',
+        'vaderSentiment.vaderSentiment',
         # Optional Gemini support
         'google.genai',
         # SQLite for history

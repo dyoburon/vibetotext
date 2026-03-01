@@ -23,6 +23,9 @@ a = Analysis(
         'pyperclip',
         'pywhispercpp',
         'pywhispercpp.model',
+        # Sentiment analysis
+        'vaderSentiment',
+        'vaderSentiment.vaderSentiment',
         # Google AI for LLM
         'google.genai',
         # PyObjC for macOS UI

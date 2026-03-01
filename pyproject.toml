@@ -16,6 +16,7 @@ dependencies = [
     "pyperclip",
     "pynput",
     "python-dotenv",
+    "vaderSentiment",
 ]
 
 [project.optional-dependencies]

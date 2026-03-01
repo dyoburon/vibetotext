@@ -31,6 +31,9 @@ a = Analysis(
         'pynput.mouse',
         'pynput.mouse._xorg',
         'dotenv',
+        # Sentiment analysis
+        'vaderSentiment',
+        'vaderSentiment.vaderSentiment',
         # Optional Gemini support
         'google.genai',
         # SQLite for history

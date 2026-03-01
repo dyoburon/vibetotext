@@ -21,25 +21,52 @@ from vibetotext.history import TranscriptionHistory
 from vibetotext.socket_server import TranscriptionSocketServer
 
 
-def open_history_app():
-    """Open the history Electron app."""
-    # Find the history-app directory relative to this file
-    src_dir = Path(__file__).parent.parent.parent
-    history_app_dir = src_dir / "history-app"
+def _launch_history_tkinter():
+    """Launch the tkinter history viewer as a separate process."""
+    # Find the bundled script (PyInstaller bundles it as data)
+    if getattr(sys, 'frozen', False):
+        script = os.path.join(sys._MEIPASS, "vibetotext", "history_ui_tkinter.py")
+    else:
+        script = os.path.join(os.path.dirname(__file__), "history_ui_tkinter.py")
 
-    if not history_app_dir.exists():
+    if not os.path.exists(script):
+        print(f"[HISTORY] history_ui_tkinter.py not found at {script}")
         return
 
-    # Check if already running (single instance will handle focus)
-    try:
-        subprocess.Popen(
-            ["npm", "start"],
-            cwd=str(history_app_dir),
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-    except Exception:
-        pass
+    # Find Python interpreter
+    if getattr(sys, 'frozen', False):
+        # Use system Python since we can't re-invoke a frozen exe as Python
+        python = "python"
+    else:
+        python = sys.executable
+
+    subprocess.Popen(
+        [python, script],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    print("[HISTORY] Launched tkinter history viewer")
+
+
+def open_history_app():
+    """Open the history app (Electron for dev, tkinter fallback)."""
+    # In development, try the Electron app first
+    if not getattr(sys, 'frozen', False):
+        history_app_dir = Path(__file__).parent.parent.parent / "history-app"
+        if history_app_dir.exists():
+            try:
+                subprocess.Popen(
+                    ["npm", "start"],
+                    cwd=str(history_app_dir),
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                return
+            except Exception:
+                pass
+
+    # Fall back to tkinter version (always works, no Electron needed)
+    _launch_history_tkinter()
 
 
 def open_viz():
@@ -203,21 +230,25 @@ def main():
     print("[DEBUG] Model loaded, defining callbacks...", flush=True)
 
     # Start socket server for external transcription (e.g., Jarvis)
-    socket_server = TranscriptionSocketServer(transcriber)
-    socket_server.start()
+    # Unix domain sockets are not available on Windows
+    socket_server = None
+    if sys.platform != "win32":
+        socket_server = TranscriptionSocketServer(transcriber)
+        socket_server.start()
 
     # Ensure cleanup on any exit (crash, signal, etc.)
     def _cleanup():
-        try:
-            socket_server.stop()
-        except Exception:
-            pass
-        # Remove stale socket if still around
-        try:
-            if os.path.exists("/tmp/vibetotext.sock"):
-                os.unlink("/tmp/vibetotext.sock")
-        except Exception:
-            pass
+        if socket_server:
+            try:
+                socket_server.stop()
+            except Exception:
+                pass
+            # Remove stale socket if still around
+            try:
+                if os.path.exists("/tmp/vibetotext.sock"):
+                    os.unlink("/tmp/vibetotext.sock")
+            except Exception:
+                pass
 
     atexit.register(_cleanup)
 
@@ -233,7 +264,10 @@ def main():
         _cleanup()
         sys.exit(1)
 
-    for sig in (signal.SIGTERM, signal.SIGHUP):
+    _signals = [signal.SIGTERM]
+    if hasattr(signal, "SIGHUP"):
+        _signals.append(signal.SIGHUP)
+    for sig in _signals:
         signal.signal(sig, _crash_signal_handler)
 
     def on_start(mode):

@@ -60,8 +60,6 @@ jobs:
           ditto -c -k --keepParent dist/vibetotext-ui vibetotext-ui.zip
           xcrun notarytool submit vibetotext-engine.zip --apple-id "$APPLE_ID" --password "$APPLE_ID_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
           xcrun notarytool submit vibetotext-ui.zip --apple-id "$APPLE_ID" --password "$APPLE_ID_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
-          xcrun stapler staple dist/vibetotext-engine
-          xcrun stapler staple dist/vibetotext-ui
           rm vibetotext-engine.zip vibetotext-ui.zip
 
       - name: Package macOS artifacts

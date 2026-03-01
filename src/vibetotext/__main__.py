@@ -21,36 +21,52 @@ from vibetotext.history import TranscriptionHistory
 from vibetotext.socket_server import TranscriptionSocketServer
 
 
-def open_history_app():
-    """Open the history Electron app."""
-    # Search for history-app in likely locations
-    candidates = []
+def _launch_history_tkinter():
+    """Launch the tkinter history viewer as a separate process."""
+    # Find the bundled script (PyInstaller bundles it as data)
     if getattr(sys, 'frozen', False):
-        exe_dir = Path(sys.executable).parent
-        candidates.append(exe_dir / "history-app")        # alongside exe
-        candidates.append(exe_dir.parent / "history-app")  # project root (exe in dist/)
-    candidates.append(Path(__file__).parent.parent.parent / "history-app")  # from source
+        script = os.path.join(sys._MEIPASS, "vibetotext", "history_ui_tkinter.py")
+    else:
+        script = os.path.join(os.path.dirname(__file__), "history_ui_tkinter.py")
 
-    history_app_dir = None
-    for candidate in candidates:
-        if candidate.exists():
-            history_app_dir = candidate
-            break
-
-    if history_app_dir is None:
-        print(f"[HISTORY] history-app not found in any of: {[str(c) for c in candidates]}")
+    if not os.path.exists(script):
+        print(f"[HISTORY] history_ui_tkinter.py not found at {script}")
         return
 
-    # Check if already running (single instance will handle focus)
-    try:
-        subprocess.Popen(
-            ["npm", "start"],
-            cwd=str(history_app_dir),
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-    except Exception:
-        pass
+    # Find Python interpreter
+    if getattr(sys, 'frozen', False):
+        # Use system Python since we can't re-invoke a frozen exe as Python
+        python = "python"
+    else:
+        python = sys.executable
+
+    subprocess.Popen(
+        [python, script],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    print("[HISTORY] Launched tkinter history viewer")
+
+
+def open_history_app():
+    """Open the history app (Electron for dev, tkinter fallback)."""
+    # In development, try the Electron app first
+    if not getattr(sys, 'frozen', False):
+        history_app_dir = Path(__file__).parent.parent.parent / "history-app"
+        if history_app_dir.exists():
+            try:
+                subprocess.Popen(
+                    ["npm", "start"],
+                    cwd=str(history_app_dir),
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                return
+            except Exception:
+                pass
+
+    # Fall back to tkinter version (always works, no Electron needed)
+    _launch_history_tkinter()
 
 
 def open_viz():

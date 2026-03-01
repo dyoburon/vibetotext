@@ -383,6 +383,89 @@ function showDictStatus(message) {
   }, 3000);
 }
 
+// Settings panel functions
+function renderSettings() {
+  const config = loadConfig();
+  const orbPos = config.orb_position || 'bottom-center';
+  const model = config.whisper_model || 'small';
+
+  // Set active preset
+  document.querySelectorAll('.orb-preset').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.preset === orbPos);
+  });
+
+  // If custom position, clear active presets and fill inputs
+  if (typeof orbPos === 'object' && orbPos.x !== undefined) {
+    document.querySelectorAll('.orb-preset').forEach(btn => btn.classList.remove('active'));
+    document.getElementById('orb-x').value = orbPos.x;
+    document.getElementById('orb-y').value = orbPos.y;
+  } else {
+    document.getElementById('orb-x').value = '';
+    document.getElementById('orb-y').value = '';
+  }
+
+  // Set model dropdown
+  document.getElementById('model-select').value = model;
+}
+
+function saveOrbPreset(preset) {
+  const config = loadConfig();
+  config.orb_position = preset;
+  saveConfig(config);
+
+  // Update UI
+  document.querySelectorAll('.orb-preset').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.preset === preset);
+  });
+  document.getElementById('orb-x').value = '';
+  document.getElementById('orb-y').value = '';
+  showSettingsStatus('orb-status', `Orb position set to ${preset.replace('-', ' ')} (restart vibetotext to apply)`);
+}
+
+function saveOrbCustom() {
+  const x = parseInt(document.getElementById('orb-x').value, 10);
+  const y = parseInt(document.getElementById('orb-y').value, 10);
+
+  if (isNaN(x) || isNaN(y)) {
+    showSettingsStatus('orb-status', 'Please enter valid X and Y coordinates');
+    return;
+  }
+
+  const config = loadConfig();
+  config.orb_position = { x, y };
+  saveConfig(config);
+
+  document.querySelectorAll('.orb-preset').forEach(btn => btn.classList.remove('active'));
+  showSettingsStatus('orb-status', `Orb position set to (${x}, ${y}) (restart vibetotext to apply)`);
+}
+
+function saveWhisperModel(model) {
+  const config = loadConfig();
+  config.whisper_model = model;
+  saveConfig(config);
+  showSettingsStatus('model-status', `Model set to ${model} (restart vibetotext to apply)`);
+}
+
+function showSettingsStatus(elementId, message) {
+  const status = document.getElementById(elementId);
+  status.textContent = message;
+  setTimeout(() => {
+    status.textContent = '';
+  }, 4000);
+}
+
+function restartEngine() {
+  const { execFile } = require('child_process');
+  const restartScript = path.join(path.dirname(__dirname), 'restart.sh');
+
+  showSettingsStatus('restart-status', 'Restarting...');
+  execFile('bash', [restartScript], (err) => {
+    if (err) {
+      showSettingsStatus('restart-status', `Error: ${err.message}`);
+    }
+  });
+}
+
 // Tab click handlers
 document.querySelectorAll('.tab').forEach(tab => {
   tab.addEventListener('click', () => {
@@ -401,10 +484,13 @@ document.querySelectorAll('.tab').forEach(tab => {
     const commonWordsSection = document.getElementById('common-words-section');
     const emptyState = document.getElementById('empty-state');
 
+    const settingsPanel = document.getElementById('settings-panel');
+
     // Hide all special panels first
     analyticsPanel.style.display = 'none';
     microphonePanel.style.display = 'none';
     dictionaryPanel.style.display = 'none';
+    settingsPanel.style.display = 'none';
 
     if (currentMode === 'analytics') {
       // Show analytics, hide entries
@@ -449,6 +535,18 @@ document.querySelectorAll('.tab').forEach(tab => {
 
       // Render dictionary words
       renderDictionaryWords();
+    } else if (currentMode === 'settings') {
+      // Show settings panel, hide entries
+      settingsPanel.style.display = 'block';
+      entriesContainer.style.display = 'none';
+      commonWordsSection.style.display = 'none';
+      emptyState.style.display = 'none';
+
+      // Update header stats (show "all" stats)
+      updateHeaderStats(currentMode);
+
+      // Render settings
+      renderSettings();
     } else {
       // Hide special panels, show entries
       render(true);
@@ -466,6 +564,16 @@ document.getElementById('dict-input').addEventListener('keypress', (e) => {
     addDictionaryWord();
   }
 });
+
+// Set up settings handlers
+document.querySelectorAll('.orb-preset').forEach(btn => {
+  btn.addEventListener('click', () => saveOrbPreset(btn.dataset.preset));
+});
+document.getElementById('orb-custom-save').addEventListener('click', saveOrbCustom);
+document.getElementById('model-select').addEventListener('change', (e) => {
+  saveWhisperModel(e.target.value);
+});
+document.getElementById('restart-btn').addEventListener('click', restartEngine);
 
 // Initial render
 render();

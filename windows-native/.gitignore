@@ -1,0 +1,15 @@
+# .NET build outputs
+bin/
+obj/
+dist/
+
+# User-specific files
+*.user
+*.suo
+.vs/
+
+# Rider
+.idea/
+
+# Build artifacts
+*.nupkg

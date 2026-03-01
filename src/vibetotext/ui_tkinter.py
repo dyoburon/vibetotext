@@ -44,14 +44,14 @@ class WaveformWindow:
         self.root.geometry(f"{self.width}x{self.height}+{x}+{y}")
 
         # Dark background
-        self.root.configure(bg="#1a1a1a")
+        self.root.configure(bg="#000000")
 
         # Canvas for drawing waveform
         self.canvas = Canvas(
             self.root,
             width=self.width,
             height=self.height,
-            bg="#1a1a1a",
+            bg="#000000",
             highlightthickness=0
         )
         self.canvas.pack()
@@ -190,7 +190,7 @@ class WaveformWindow:
         # Draw rounded background
         self.canvas.create_rectangle(
             0, 0, self.width, self.height,
-            fill="#1a1a1a", outline=""
+            fill="#000000", outline=""
         )
 
         num_bars = 25
@@ -204,8 +204,8 @@ class WaveformWindow:
         center_y = self.height / 2
 
         if self.recording:
-            # Pink color for recording
-            color = "#ff6699"
+            # White color for recording
+            color = "#ffffff"
             for i in range(num_bars):
                 level = self.levels[i] if i < len(self.levels) else 0.0
                 x = start_x + i * (bar_width + bar_spacing)
@@ -220,8 +220,8 @@ class WaveformWindow:
                     fill=color, outline=""
                 )
         else:
-            # Gray color for idle - flat line
-            color = "#595959"
+            # Onyx gray color for idle - flat line
+            color = "#3f3f46"
             min_height = max(2, self.height * 0.1)
             for i in range(num_bars):
                 x = start_x + i * (bar_width + bar_spacing)

@@ -10,6 +10,7 @@ readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
     "pywhispercpp",
+    "faster-whisper",
     "sounddevice",
     "numpy",
     "pyperclip",
@@ -25,11 +26,11 @@ windows = [
     "pystray",
     "Pillow",
 ]
-dev = [
-    "pytest",
-]
 build = [
     "pyinstaller",
+]
+dev = [
+    "pytest",
 ]
 
 [project.scripts]

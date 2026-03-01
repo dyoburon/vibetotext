@@ -13,27 +13,22 @@ try:
 except ImportError:
     pass
 
-# Lazy-loaded Gemini module
-_genai = None
+# Try to import google.generativeai (optional dependency)
+try:
+    import google.generativeai as genai
+    _genai_available = True
+except ImportError:
+    genai = None
+    _genai_available = False
 
-def _get_genai():
-    """Lazily import and configure google.generativeai."""
-    global _genai
-    if _genai is not None:
-        return _genai
-    try:
-        import google.generativeai as genai
-    except ImportError:
-        print("[LLM] google-generativeai not installed. Install with: pip install vibetotext[gemini]")
-        return None
-    api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
-    if api_key:
-        genai.configure(api_key=api_key)
-        _genai = genai
-        return genai
-    else:
-        print("[LLM] Warning: No GEMINI_API_KEY or GOOGLE_API_KEY set. Plan/cleanup modes will fail.")
-        return None
+# Configure Gemini (try both common env var names)
+_api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+if _api_key and _genai_available:
+    genai.configure(api_key=_api_key)
+elif not _genai_available:
+    print("[LLM] google-generativeai package not installed. Plan/cleanup modes unavailable.")
+else:
+    print("[LLM] Warning: No GEMINI_API_KEY or GOOGLE_API_KEY set. Plan/cleanup modes will fail.")
 
 
 CLEANUP_PROMPT = """You are an expert prompt optimizer and thought clarifier. The user has recorded a rambling voice message and needs you to transform it into a clear, well-structured prompt or request.
@@ -116,8 +111,11 @@ def cleanup_text(text: str) -> Optional[str]:
     Returns:
         Cleaned up, refined text or None if failed
     """
-    genai = _get_genai()
-    if genai is None:
+    if not _genai_available:
+        print("Gemini cleanup error: google-generativeai package not installed")
+        return None
+    if not _api_key:
+        print("Gemini cleanup error: No API key configured")
         return None
 
     try:
@@ -130,7 +128,8 @@ def cleanup_text(text: str) -> Optional[str]:
             generation_config=genai.types.GenerationConfig(
                 temperature=0.3,  # Lower temperature for more focused output
                 max_output_tokens=2048,
-            )
+            ),
+            request_options={"timeout": 30},
         )
 
         if response.text:
@@ -152,8 +151,11 @@ def generate_implementation_plan(text: str) -> Optional[str]:
     Returns:
         Structured markdown implementation plan or None if failed
     """
-    genai = _get_genai()
-    if genai is None:
+    if not _genai_available:
+        print("Gemini plan error: google-generativeai package not installed")
+        return None
+    if not _api_key:
+        print("Gemini plan error: No API key configured")
         return None
 
     try:
@@ -166,7 +168,8 @@ def generate_implementation_plan(text: str) -> Optional[str]:
             generation_config=genai.types.GenerationConfig(
                 temperature=0.4,  # Slightly higher for creative structure
                 max_output_tokens=4096,  # Longer output for detailed plans
-            )
+            ),
+            request_options={"timeout": 30},
         )
 
         if response.text:

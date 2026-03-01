@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Cosmic Entity - Reference Render</title>
+<style>
+    body { margin: 0; background: #000; overflow: hidden; }
+    canvas { display: block; }
+    #controls {
+        position: fixed; top: 10px; left: 10px; z-index: 10;
+        color: #fff; font-family: monospace; font-size: 13px;
+        background: rgba(0,0,0,0.7); padding: 12px; border-radius: 6px;
+    }
+    #controls button {
+        background: #335; color: #fff; border: 1px solid #668;
+        padding: 6px 12px; margin: 3px; cursor: pointer; border-radius: 3px;
+    }
+    #controls button:hover { background: #447; }
+    #info { position: fixed; bottom: 10px; left: 10px; color: #555; font-family: monospace; font-size: 11px; }
+</style>
+</head>
+<body>
+<div id="controls">
+    <div>Drag to orbit | Scroll to zoom</div>
+    <div style="margin-top:8px;">
+        <button onclick="setView('front')">Front</button>
+        <button onclick="setView('side')">Side</button>
+        <button onclick="setView('three-quarter')">3/4 View</button>
+        <button onclick="setView('back')">Back</button>
+    </div>
+    <div style="margin-top:8px;">
+        <button onclick="captureImage()">Save PNG</button>
+        <label style="margin-left:10px;"><input type="checkbox" id="showLines" checked onchange="toggleLines()"> Lines</label>
+        <label style="margin-left:6px;"><input type="checkbox" id="showPlanet" checked onchange="togglePlanet()"> Planet ref</label>
+    </div>
+</div>
+<div id="info">Skeleton reference render for CraftsMan3D</div>
+
+<script type="importmap">
+{
+    "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/"
+    }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ── Skeleton definition (same as sky-entity.js) ──
+const JOINTS = {
+    pelvis:     [  0,  -20,  -45],
+    lowerSpine: [  0,    0,  -42],
+    midSpine:   [  0,   18,  -38],
+    upperSpine: [  0,   32,  -34],
+    neck:       [  0,   42,  -32],
+    head:       [  0,   52,  -30],
+    crown:      [  0,   60,  -28],
+    lShoulder:  [-18,   35,  -30],
+    lUpperArm:  [-28,   25,  -20],
+    lElbow:     [-32,   12,  -10],
+    lForearm:   [-28,    5,    0],
+    lWrist:     [-22,    0,    8],
+    lFingers:   [-18,   -2,   14],
+    rShoulder:  [ 18,   35,  -30],
+    rUpperArm:  [ 30,   33,  -22],
+    rElbow:     [ 42,   30,  -18],
+    rForearm:   [ 55,   28,  -16],
+    rWrist:     [ 65,   26,  -15],
+    rFingers:   [ 72,   25,  -15],
+    lHip:       [-10,  -22,  -45],
+    lKnee:      [-20,  -55,  -35],
+    lAnkle:     [-15,  -85,  -40],
+    lFoot:      [-12,  -95,  -35],
+    rHip:       [ 10,  -22,  -45],
+    rKnee:      [ 20,  -55,  -35],
+    rAnkle:     [ 15,  -85,  -40],
+    rFoot:      [ 12,  -95,  -35],
+};
+
+const BONES = [
+    ['pelvis', 'lowerSpine'], ['lowerSpine', 'midSpine'],
+    ['midSpine', 'upperSpine'], ['upperSpine', 'neck'],
+    ['neck', 'head'], ['head', 'crown'],
+    ['upperSpine', 'lShoulder'], ['lShoulder', 'lUpperArm'],
+    ['lUpperArm', 'lElbow'], ['lElbow', 'lForearm'],
+    ['lForearm', 'lWrist'], ['lWrist', 'lFingers'],
+    ['upperSpine', 'rShoulder'], ['rShoulder', 'rUpperArm'],
+    ['rUpperArm', 'rElbow'], ['rElbow', 'rForearm'],
+    ['rForearm', 'rWrist'], ['rWrist', 'rFingers'],
+    ['pelvis', 'lHip'], ['lHip', 'lKnee'],
+    ['lKnee', 'lAnkle'], ['lAnkle', 'lFoot'],
+    ['pelvis', 'rHip'], ['rHip', 'rKnee'],
+    ['rKnee', 'rAnkle'], ['rAnkle', 'rFoot'],
+];
+
+const LIMB_RADIUS = {
+    'pelvis-lowerSpine': 10, 'lowerSpine-midSpine': 10, 'midSpine-upperSpine': 9,
+    'upperSpine-neck': 6, 'neck-head': 5, 'head-crown': 6,
+    'upperSpine-lShoulder': 6, 'lShoulder-lUpperArm': 5.5, 'lUpperArm-lElbow': 5,
+    'lElbow-lForearm': 4, 'lForearm-lWrist': 3.5, 'lWrist-lFingers': 3,
+    'upperSpine-rShoulder': 6, 'rShoulder-rUpperArm': 5.5, 'rUpperArm-rElbow': 5,
+    'rElbow-rForearm': 4, 'rForearm-rWrist': 3.5, 'rWrist-rFingers': 3,
+    'pelvis-lHip': 8, 'lHip-lKnee': 7, 'lKnee-lAnkle': 5, 'lAnkle-lFoot': 3.5,
+    'pelvis-rHip': 8, 'rHip-rKnee': 7, 'rKnee-rAnkle': 5, 'rAnkle-rFoot': 3.5,
+};
+
+// ── RNG ──
+function mulberry32(a) {
+    return function() {
+        a |= 0; a = a + 0x6D2B79F5 | 0;
+        let t = Math.imul(a ^ a >>> 15, 1 | a);
+        t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+        return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+}
+function gaussianRandom(rng) {
+    let u, v, s;
+    do { u = rng()*2-1; v = rng()*2-1; s = u*u+v*v; } while (s >= 1 || s === 0);
+    return u * Math.sqrt(-2 * Math.log(s) / s);
+}
+
+// ── Glow texture ──
+function createGlowTex(size = 64) {
+    const c = document.createElement('canvas');
+    c.width = size; c.height = size;
+    const ctx = c.getContext('2d');
+    const g = ctx.createRadialGradient(size/2, size/2, 0, size/2, size/2, size/2);
+    g.addColorStop(0, 'rgba(255,255,255,1)');
+    g.addColorStop(0.25, 'rgba(200,220,255,0.7)');
+    g.addColorStop(0.6, 'rgba(140,180,255,0.15)');
+    g.addColorStop(1, 'rgba(100,150,255,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, size, size);
+    return new THREE.CanvasTexture(c);
+}
+
+// ── Generate particles ──
+function generateParticles() {
+    const rng = mulberry32(42);
+    const DENSITY = 30;
+    const positions = [];
+
+    for (const [j0Name, j1Name] of BONES) {
+        const j0 = JOINTS[j0Name], j1 = JOINTS[j1Name];
+        const dx = j1[0]-j0[0], dy = j1[1]-j0[1], dz = j1[2]-j0[2];
+        const boneLen = Math.sqrt(dx*dx + dy*dy + dz*dz);
+        const radius = LIMB_RADIUS[`${j0Name}-${j1Name}`] || 5;
+
+        const bdx = dx/boneLen, bdy = dy/boneLen, bdz = dz/boneLen;
+        let px = 0, py = 1, pz = 0;
+        if (Math.abs(bdy) >= 0.9) { px = 1; py = 0; }
+        let p1x = bdy*pz - bdz*py, p1y = bdz*px - bdx*pz, p1z = bdx*py - bdy*px;
+        const p1L = Math.sqrt(p1x*p1x + p1y*p1y + p1z*p1z);
+        p1x /= p1L; p1y /= p1L; p1z /= p1L;
+        const p2x = bdy*p1z - bdz*p1y, p2y = bdz*p1x - bdx*p1z, p2z = bdx*p1y - bdy*p1x;
+
+        const count = Math.max(12, Math.floor(boneLen * DENSITY));
+        for (let i = 0; i < count; i++) {
+            const t = rng();
+            const r = Math.abs(gaussianRandom(rng)) * radius * 0.45;
+            const angle = rng() * Math.PI * 2;
+            const oX = Math.cos(angle), oY = Math.sin(angle);
+            positions.push(
+                j0[0] + dx*t + (p1x*oX + p2x*oY)*r,
+                j0[1] + dy*t + (p1y*oX + p2y*oY)*r,
+                j0[2] + dz*t + (p1z*oX + p2z*oY)*r
+            );
+        }
+    }
+
+    // Torso fill
+    for (let i = 0; i < 2000; i++) {
+        const x = -20 + rng()*40, y = -22 + rng()*57, z = -48 + rng()*20;
+        const yN = (y + 22) / 57;
+        const taper = 0.5 + 0.5 * Math.sin(yN * Math.PI);
+        if (Math.abs(x) > 20 * taper) continue;
+        positions.push(x, y, z);
+    }
+
+    // Head sphere
+    const h = JOINTS.head;
+    for (let i = 0; i < 500; i++) {
+        const r = Math.abs(gaussianRandom(rng)) * 9;
+        const theta = rng() * Math.PI * 2;
+        const phi = Math.acos(2*rng() - 1);
+        positions.push(
+            h[0] + Math.sin(phi)*Math.cos(theta)*r,
+            h[1] + Math.sin(phi)*Math.sin(theta)*r,
+            h[2] + Math.cos(phi)*r
+        );
+    }
+
+    return new Float32Array(positions);
+}
+
+// ── Scene setup ──
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x000000);
+
+const camera = new THREE.PerspectiveCamera(50, window.innerWidth/window.innerHeight, 0.1, 500);
+camera.position.set(60, 30, 80);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(window.devicePixelRatio);
+document.body.appendChild(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(10, 10, -20);
+controls.enableDamping = true;
+controls.dampingFactor = 0.05;
+controls.update();
+
+// ── Body particles ──
+const glowTex = createGlowTex();
+const bodyGeo = new THREE.BufferGeometry();
+bodyGeo.setAttribute('position', new THREE.BufferAttribute(generateParticles(), 3));
+const bodyMat = new THREE.PointsMaterial({
+    size: 2.0,
+    map: glowTex,
+    color: 0xaaccff,
+    transparent: true,
+    opacity: 0.8,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    sizeAttenuation: true,
+});
+const bodyPoints = new THREE.Points(bodyGeo, bodyMat);
+scene.add(bodyPoints);
+
+// ── Star nodes ──
+const starGeo = new THREE.BufferGeometry();
+const jointNames = Object.keys(JOINTS);
+const starPos = new Float32Array(jointNames.length * 3);
+for (let i = 0; i < jointNames.length; i++) {
+    const j = JOINTS[jointNames[i]];
+    starPos[i*3] = j[0]; starPos[i*3+1] = j[1]; starPos[i*3+2] = j[2];
+}
+starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+const starMat = new THREE.PointsMaterial({
+    size: 6.0,
+    map: glowTex,
+    color: 0xddeeff,
+    transparent: true,
+    opacity: 1.0,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    sizeAttenuation: true,
+});
+scene.add(new THREE.Points(starGeo, starMat));
+
+// ── Constellation lines ──
+const linePos = [];
+for (const [j0, j1] of BONES) {
+    const a = JOINTS[j0], b = JOINTS[j1];
+    linePos.push(a[0], a[1], a[2], b[0], b[1], b[2]);
+}
+const lineGeo = new THREE.BufferGeometry();
+lineGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(linePos), 3));
+const lineMat = new THREE.LineBasicMaterial({
+    color: 0x4477cc, transparent: true, opacity: 0.35,
+    blending: THREE.AdditiveBlending, depthWrite: false,
+});
+const lines = new THREE.LineSegments(lineGeo, lineMat);
+scene.add(lines);
+
+// ── Reference planet (wireframe sphere at origin, r=40) ──
+const planetGeo = new THREE.SphereGeometry(40, 24, 16);
+const planetMat = new THREE.MeshBasicMaterial({
+    color: 0x224422, wireframe: true, transparent: true, opacity: 0.15
+});
+const planet = new THREE.Mesh(planetGeo, planetMat);
+scene.add(planet);
+
+// ── Nebula reference (wireframe sphere at 70,25,-15) ──
+const nebRef = new THREE.Mesh(
+    new THREE.SphereGeometry(20, 12, 8),
+    new THREE.MeshBasicMaterial({ color: 0x664422, wireframe: true, transparent: true, opacity: 0.1 })
+);
+nebRef.position.set(70, 25, -15);
+scene.add(nebRef);
+
+// ── Animation ──
+function animate() {
+    requestAnimationFrame(animate);
+    controls.update();
+    renderer.render(scene, camera);
+}
+animate();
+
+// ── View presets ──
+window.setView = function(view) {
+    const target = new THREE.Vector3(10, 10, -20);
+    controls.target.copy(target);
+    switch(view) {
+        case 'front':
+            camera.position.set(10, 20, 100);
+            break;
+        case 'side':
+            camera.position.set(120, 20, -20);
+            break;
+        case 'three-quarter':
+            camera.position.set(80, 30, 70);
+            break;
+        case 'back':
+            camera.position.set(10, 20, -140);
+            break;
+    }
+    controls.update();
+};
+
+window.captureImage = function() {
+    const link = document.createElement('a');
+    link.download = 'cosmic-entity-render.png';
+    link.href = renderer.domElement.toDataURL('image/png');
+    link.click();
+};
+
+window.toggleLines = function() {
+    lines.visible = document.getElementById('showLines').checked;
+};
+
+window.togglePlanet = function() {
+    const show = document.getElementById('showPlanet').checked;
+    planet.visible = show;
+    nebRef.visible = show;
+};
+
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>

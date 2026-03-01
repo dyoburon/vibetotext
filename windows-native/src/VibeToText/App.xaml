@@ -1,0 +1,20 @@
+<Application x:Class="VibeToText.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:converters="clr-namespace:VibeToText.UI.Converters"
+             ShutdownMode="OnExplicitShutdown">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="UI/Theme/Colors.xaml" />
+                <ResourceDictionary Source="UI/Theme/Styles.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <!-- Global converters -->
+            <converters:ModeBackgroundConverter x:Key="ModeBackgroundConverter" />
+            <converters:ModeForegroundConverter x:Key="ModeForegroundConverter" />
+            <converters:BoolToVisibilityConverter x:Key="BoolToVisibility" />
+            <converters:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibility" />
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

@@ -16,6 +16,8 @@ dist/
 # PyInstaller - ignore root spec files but track build/ directory specs
 /*.spec
 # PyInstaller build output (not our build/ config directory)
+build/
+dist/
 pyinstaller_build/
 
 # IDE
@@ -27,6 +29,9 @@ pyinstaller_build/
 # macOS
 .DS_Store
 *.app
+
+# Claude
+CLAUDE.md
 
 # Project specific
 *.output
@@ -46,3 +51,12 @@ obj/
 
 # Electron history app
 history-app/node_modules/
+
+# Node modules
+node_modules/
+
+# Swift native app build artifacts
+native-app/.build/
+
+# 3D model files
+*.glb

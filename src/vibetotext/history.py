@@ -9,6 +9,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+
+_sentiment_analyzer = SentimentIntensityAnalyzer()
+
 
 # Common English stopwords to exclude from word frequency
 STOPWORDS = {
@@ -60,13 +64,37 @@ class TranscriptionHistory:
                     timestamp TEXT NOT NULL,
                     word_count INTEGER NOT NULL,
                     duration_seconds REAL,
-                    wpm INTEGER
+                    wpm INTEGER,
+                    sentiment REAL
                 )
             """)
             conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_timestamp ON entries(timestamp DESC)
             """)
+            # Add sentiment column if missing (existing databases)
+            try:
+                conn.execute("ALTER TABLE entries ADD COLUMN sentiment REAL")
+            except sqlite3.OperationalError:
+                pass  # Column already exists
             conn.commit()
+            self._backfill_sentiment(conn)
+
+    def _backfill_sentiment(self, conn):
+        """Score any entries missing sentiment with VADER."""
+        rows = conn.execute(
+            "SELECT id, text FROM entries WHERE sentiment IS NULL"
+        ).fetchall()
+        if not rows:
+            return
+        print(f"[HISTORY] Backfilling VADER sentiment for {len(rows)} entries...")
+        for row in rows:
+            score = _sentiment_analyzer.polarity_scores(row["text"])["compound"]
+            conn.execute(
+                "UPDATE entries SET sentiment = ? WHERE id = ?",
+                (score, row["id"]),
+            )
+        conn.commit()
+        print(f"[HISTORY] Sentiment backfill complete.")
 
     def _migrate_from_json(self):
         """Migrate existing JSON history to SQLite (one-time operation)."""
@@ -154,14 +182,17 @@ class TranscriptionHistory:
             minutes = duration_seconds / 60
             wpm = round(word_count / minutes) if minutes > 0 else None
 
+        # VADER sentiment score (-1 to 1)
+        sentiment = _sentiment_analyzer.polarity_scores(text)["compound"]
+
         # Save in background thread to not block pasting
         def save_async():
             try:
                 with self._get_connection() as conn:
                     conn.execute("""
-                        INSERT INTO entries (text, mode, timestamp, word_count, duration_seconds, wpm)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                    """, (text, mode, timestamp.isoformat(), word_count, duration_seconds, wpm))
+                        INSERT INTO entries (text, mode, timestamp, word_count, duration_seconds, wpm, sentiment)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """, (text, mode, timestamp.isoformat(), word_count, duration_seconds, wpm, sentiment))
                     conn.commit()
 
                     count = conn.execute("SELECT COUNT(*) FROM entries").fetchone()[0]
@@ -221,6 +252,7 @@ class TranscriptionHistory:
                     "total_words": 0,
                     "total_sessions": 0,
                     "common_words": [],
+                    "longest_words": [],
                     "avg_wpm": 0,
                     "time_saved_minutes": 0,
                     "total_duration_seconds": 0,
@@ -256,10 +288,15 @@ class TranscriptionHistory:
             word_counts = Counter(all_words)
             common_words = word_counts.most_common(20)
 
+            # Longest unique words used, sorted by length descending
+            unique_words = set(all_words)
+            longest_words = sorted(unique_words, key=len, reverse=True)[:20]
+
             return {
                 "total_words": total_words,
                 "total_sessions": total_sessions,
                 "common_words": common_words,
+                "longest_words": longest_words,
                 "avg_wpm": avg_wpm,
                 "time_saved_minutes": round(time_saved_minutes, 1),
                 "total_duration_seconds": round(total_duration, 1),

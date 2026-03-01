@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=VibeToText
+Comment=Voice-to-text with automatic code context injection
+Exec=vibetotext-engine
+Terminal=false
+Categories=Utility;Audio;
+Keywords=voice;text;transcription;whisper;speech;
+StartupNotify=true

@@ -1,0 +1,118 @@
+<Window x:Class="VibeToText.UI.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:views="clr-namespace:VibeToText.UI.Views"
+        xmlns:vm="clr-namespace:VibeToText.ViewModels"
+        Title="VibeToText"
+        Width="450" Height="650"
+        MinWidth="350" MinHeight="400"
+        Background="{StaticResource BgPrimaryBrush}"
+        WindowStartupLocation="CenterScreen">
+
+    <!-- Converters are in App.xaml resources -->
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />  <!-- Header -->
+            <RowDefinition Height="Auto" />  <!-- Tabs -->
+            <RowDefinition Height="*" />     <!-- Content -->
+        </Grid.RowDefinitions>
+
+        <!-- Header with Stats -->
+        <Border Grid.Row="0" Padding="16,20,16,12"
+                Background="{StaticResource BgSecondaryBrush}"
+                BorderBrush="{StaticResource BorderBrush}"
+                BorderThickness="0,0,0,1">
+            <StackPanel>
+                <TextBlock Text="TRANSCRIPTION HISTORY"
+                           FontSize="12" FontWeight="SemiBold"
+                           Foreground="{StaticResource TextSecondaryBrush}"
+                           Margin="0,0,0,12" />
+                <UniformGrid Columns="4">
+                    <StackPanel>
+                        <TextBlock Text="{Binding TotalSessions}" Style="{StaticResource StatValueStyle}" />
+                        <TextBlock Text="CHATS" Style="{StaticResource StatLabelStyle}" />
+                    </StackPanel>
+                    <StackPanel>
+                        <TextBlock Text="{Binding TotalWords}" Style="{StaticResource StatValueStyle}" />
+                        <TextBlock Text="WORDS" Style="{StaticResource StatLabelStyle}" />
+                    </StackPanel>
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource StatValueStyle}">
+                            <TextBlock.Text>
+                                <Binding Path="AvgWpm" StringFormat="{}{0}" FallbackValue="--" />
+                            </TextBlock.Text>
+                        </TextBlock>
+                        <TextBlock Text="AVG WPM" Style="{StaticResource StatLabelStyle}" />
+                    </StackPanel>
+                    <StackPanel>
+                        <TextBlock Text="{Binding TimeSavedMinutes, StringFormat='{}{0:F1}'}"
+                                   Style="{StaticResource StatValueStyle}"
+                                   Foreground="{StaticResource GreenBrush}" />
+                        <TextBlock Text="MIN SAVED" Style="{StaticResource StatLabelStyle}"
+                                   Foreground="{StaticResource GreenBrush}" />
+                    </StackPanel>
+                </UniformGrid>
+            </StackPanel>
+        </Border>
+
+        <!-- Tabs -->
+        <Border Grid.Row="1" Padding="8,8"
+                Background="{StaticResource BgPrimaryBrush}"
+                BorderBrush="{StaticResource BorderBrush}"
+                BorderThickness="0,0,0,1">
+            <WrapPanel>
+                <RadioButton Content="All" GroupName="Tabs" IsChecked="True"
+                             Style="{StaticResource TabButtonStyle}"
+                             Command="{Binding SwitchTabCommand}" CommandParameter="all" />
+                <RadioButton Content="Transcribe" GroupName="Tabs"
+                             Style="{StaticResource TabButtonStyle}"
+                             Command="{Binding SwitchTabCommand}" CommandParameter="transcribe" />
+                <RadioButton Content="Greppy" GroupName="Tabs"
+                             Style="{StaticResource TabButtonStyle}"
+                             Command="{Binding SwitchTabCommand}" CommandParameter="greppy" />
+                <RadioButton Content="Cleanup" GroupName="Tabs"
+                             Style="{StaticResource TabButtonStyle}"
+                             Command="{Binding SwitchTabCommand}" CommandParameter="cleanup" />
+                <RadioButton Content="Plan" GroupName="Tabs"
+                             Style="{StaticResource TabButtonStyle}"
+                             Command="{Binding SwitchTabCommand}" CommandParameter="plan" />
+                <RadioButton Content="Analytics" GroupName="Tabs"
+                             Style="{StaticResource TabButtonStyle}"
+                             Command="{Binding SwitchTabCommand}" CommandParameter="analytics" />
+                <RadioButton Content="Microphone" GroupName="Tabs"
+                             Style="{StaticResource TabButtonStyle}"
+                             Command="{Binding SwitchTabCommand}" CommandParameter="microphone" />
+                <RadioButton Content="Dictionary" GroupName="Tabs"
+                             Style="{StaticResource TabButtonStyle}"
+                             Command="{Binding SwitchTabCommand}" CommandParameter="dictionary" />
+                <RadioButton Content="Settings" GroupName="Tabs"
+                             Style="{StaticResource TabButtonStyle}"
+                             Command="{Binding SwitchTabCommand}" CommandParameter="settings" />
+            </WrapPanel>
+        </Border>
+
+        <!-- Content area -->
+        <Grid Grid.Row="2">
+            <!-- History List View -->
+            <views:HistoryListView DataContext="{Binding}"
+                                   Visibility="{Binding ShowEntries, Converter={StaticResource BoolToVisibility}}" />
+
+            <!-- Analytics Dashboard -->
+            <views:AnalyticsDashboardView DataContext="{Binding}"
+                                          Visibility="{Binding ShowAnalytics, Converter={StaticResource BoolToVisibility}}" />
+
+            <!-- Microphone Settings -->
+            <views:MicrophoneSettingsView DataContext="{Binding}"
+                                          Visibility="{Binding ShowMicrophone, Converter={StaticResource BoolToVisibility}}" />
+
+            <!-- Dictionary Settings -->
+            <views:DictionarySettingsView DataContext="{Binding}"
+                                          Visibility="{Binding ShowDictionary, Converter={StaticResource BoolToVisibility}}" />
+
+            <!-- Settings -->
+            <views:SettingsView DataContext="{Binding}"
+                                Visibility="{Binding ShowSettings, Converter={StaticResource BoolToVisibility}}" />
+        </Grid>
+    </Grid>
+</Window>

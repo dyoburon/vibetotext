@@ -23,11 +23,22 @@ from vibetotext.socket_server import TranscriptionSocketServer
 
 def open_history_app():
     """Open the history Electron app."""
-    # Find the history-app directory relative to this file
-    src_dir = Path(__file__).parent.parent.parent
-    history_app_dir = src_dir / "history-app"
+    # Search for history-app in likely locations
+    candidates = []
+    if getattr(sys, 'frozen', False):
+        exe_dir = Path(sys.executable).parent
+        candidates.append(exe_dir / "history-app")        # alongside exe
+        candidates.append(exe_dir.parent / "history-app")  # project root (exe in dist/)
+    candidates.append(Path(__file__).parent.parent.parent / "history-app")  # from source
 
-    if not history_app_dir.exists():
+    history_app_dir = None
+    for candidate in candidates:
+        if candidate.exists():
+            history_app_dir = candidate
+            break
+
+    if history_app_dir is None:
+        print(f"[HISTORY] history-app not found in any of: {[str(c) for c in candidates]}")
         return
 
     # Check if already running (single instance will handle focus)

@@ -32,6 +32,11 @@ jobs:
           pyinstaller packaging/macos/vibetotext-engine.spec --noconfirm --distpath dist --workpath pyinstaller_build
           pyinstaller packaging/macos/vibetotext-ui.spec --noconfirm --distpath dist --workpath pyinstaller_build
 
+      - name: Ad-hoc sign macOS binaries
+        run: |
+          codesign --force --deep --sign - dist/vibetotext-engine
+          codesign --force --deep --sign - dist/vibetotext-ui
+
       - name: Package macOS artifacts
         run: |
           cd dist

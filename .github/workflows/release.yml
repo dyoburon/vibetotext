@@ -32,10 +32,37 @@ jobs:
           pyinstaller packaging/macos/vibetotext-engine.spec --noconfirm --distpath dist --workpath pyinstaller_build
           pyinstaller packaging/macos/vibetotext-ui.spec --noconfirm --distpath dist --workpath pyinstaller_build
 
-      - name: Ad-hoc sign macOS binaries
+      - name: Install Apple certificate
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PWD: ${{ secrets.MACOS_CERTIFICATE_PWD }}
         run: |
-          codesign --force --deep --sign - dist/vibetotext-engine
-          codesign --force --deep --sign - dist/vibetotext-ui
+          echo "$MACOS_CERTIFICATE" | base64 --decode > certificate.p12
+          security create-keychain -p actions build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p actions build.keychain
+          security import certificate.p12 -k build.keychain -P "$MACOS_CERTIFICATE_PWD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k actions build.keychain
+          rm certificate.p12
+
+      - name: Sign macOS binaries
+        run: |
+          codesign --force --deep --options runtime --sign "Developer ID Application: Dylan Burton (BM79XU2ZAL)" dist/vibetotext-engine
+          codesign --force --deep --options runtime --sign "Developer ID Application: Dylan Burton (BM79XU2ZAL)" dist/vibetotext-ui
+
+      - name: Notarize macOS binaries
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          ditto -c -k --keepParent dist/vibetotext-engine vibetotext-engine.zip
+          ditto -c -k --keepParent dist/vibetotext-ui vibetotext-ui.zip
+          xcrun notarytool submit vibetotext-engine.zip --apple-id "$APPLE_ID" --password "$APPLE_ID_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
+          xcrun notarytool submit vibetotext-ui.zip --apple-id "$APPLE_ID" --password "$APPLE_ID_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
+          xcrun stapler staple dist/vibetotext-engine
+          xcrun stapler staple dist/vibetotext-ui
+          rm vibetotext-engine.zip vibetotext-ui.zip
 
       - name: Package macOS artifacts
         run: |

@@ -37,8 +37,11 @@ a = Analysis(
         'PIL.ImageDraw',
         'PIL.ImageFont',
         'dotenv',
+        # Sentiment analysis
+        'vaderSentiment',
+        'vaderSentiment.vaderSentiment',
         # Optional Gemini support
-        'google.generativeai',
+        'google.genai',
         # SQLite for history
         'sqlite3',
         # Standard library modules used by vibetotext

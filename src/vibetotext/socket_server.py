@@ -20,7 +20,8 @@ import time
 import numpy as np
 
 SOCKET_PATH = "/tmp/vibetotext.sock"
-LOG_PATH = "/tmp/vibetotext_socket.log"
+LOG_DIR = os.environ.get("TEMP", os.environ.get("TMPDIR", "/tmp"))
+LOG_PATH = os.path.join(LOG_DIR, "vibetotext_socket.log")
 
 _log = logging.getLogger("vibetotext.socket")
 _log.setLevel(logging.DEBUG)

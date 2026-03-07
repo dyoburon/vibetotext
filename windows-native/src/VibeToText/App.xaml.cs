@@ -84,7 +84,7 @@ public partial class App : Application
             Database = new HistoryDatabase();
 
             var recorder = new AudioRecorder();
-            var transcriber = new WhisperTranscriber();
+            var transcriber = new WhisperTranscriber(Config.WhisperModel);
             var pasteService = new PasteService();
             Gemini = new GeminiService();
 

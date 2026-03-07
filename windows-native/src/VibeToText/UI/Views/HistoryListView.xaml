@@ -76,11 +76,16 @@
                                         </Border>
                                     </DockPanel>
 
-                                    <!-- Text -->
-                                    <TextBlock Text="{Binding Text}"
-                                               FontSize="14" TextWrapping="Wrap"
-                                               Foreground="{StaticResource TextPrimaryBrush}"
-                                               MaxHeight="100" />
+                                    <!-- Text (selectable + copyable) -->
+                                    <TextBox Text="{Binding Text, Mode=OneWay}"
+                                             FontSize="14" TextWrapping="Wrap"
+                                             Foreground="{StaticResource TextPrimaryBrush}"
+                                             Background="Transparent"
+                                             BorderThickness="0"
+                                             IsReadOnly="True"
+                                             MaxHeight="100"
+                                             Padding="0"
+                                             Cursor="IBeam" />
 
                                     <!-- Stats -->
                                     <TextBlock Text="{Binding StatsText}"

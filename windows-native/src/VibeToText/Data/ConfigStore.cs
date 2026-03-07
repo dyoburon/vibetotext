@@ -21,6 +21,7 @@ public partial class ConfigStore : ObservableObject
     private string? _audioDeviceName;
     private string? _codebasePath;
     private string? _geminiApiKey;
+    private string _whisperModel = "base";
     private List<string> _customDictionary = new();
     private JsonObject? _rawJson; // Preserve unknown keys
 
@@ -46,6 +47,12 @@ public partial class ConfigStore : ObservableObject
     {
         get => _geminiApiKey;
         set { SetProperty(ref _geminiApiKey, value); Save(); }
+    }
+
+    public string WhisperModel
+    {
+        get => _whisperModel;
+        set { SetProperty(ref _whisperModel, value); Save(); }
     }
 
     public List<string> CustomDictionary
@@ -74,6 +81,7 @@ public partial class ConfigStore : ObservableObject
             _audioDeviceName = _rawJson["audio_device_name"]?.GetValue<string>();
             _codebasePath = _rawJson["codebase_path"]?.GetValue<string>();
             _geminiApiKey = _rawJson["gemini_api_key"]?.GetValue<string>();
+            _whisperModel = _rawJson["whisper_model"]?.GetValue<string>() ?? "base";
 
             var dictArray = _rawJson["custom_dictionary"]?.AsArray();
             if (dictArray != null)
@@ -116,6 +124,8 @@ public partial class ConfigStore : ObservableObject
                 _rawJson["gemini_api_key"] = _geminiApiKey;
             else
                 _rawJson.Remove("gemini_api_key");
+
+            _rawJson["whisper_model"] = _whisperModel;
 
             var dictArray = new JsonArray();
             foreach (var word in _customDictionary)

@@ -160,6 +160,25 @@ public partial class WhisperTranscriber : IDisposable
         }
     }
 
+    public static readonly string[] AvailableModels = { "tiny", "base", "small", "medium", "large-v3-turbo", "large-v3" };
+
+    public string ModelName => _modelName;
+
+    public Task ChangeModelAsync(string modelName)
+    {
+        if (modelName == _modelName && _processor != null) return Task.CompletedTask;
+
+        _processor?.Dispose();
+        _processor = null;
+        _factory?.Dispose();
+        _factory = null;
+        _lastCustomWords = null;
+
+        _modelName = modelName;
+        Log($"Model changed to '{_modelName}', will load on next transcription.");
+        return Task.CompletedTask;
+    }
+
     public async Task<string> TranscribeAsync(float[] audio)
     {
         if (audio.Length == 0) return string.Empty;

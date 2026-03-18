@@ -71,6 +71,27 @@
                 </StackPanel>
             </Border>
 
+            <!-- Whisper Model -->
+            <Border Style="{StaticResource CardStyle}" Padding="24" Margin="0,0,0,16">
+                <StackPanel>
+                    <TextBlock Text="Transcription Model" FontSize="16" FontWeight="SemiBold"
+                               Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,8" />
+                    <TextBlock Text="Larger models are more accurate but slower and use more memory. The model will be downloaded on first use."
+                               FontSize="13" Foreground="{StaticResource TextSecondaryBrush}"
+                               TextWrapping="Wrap" Margin="0,0,0,16" />
+
+                    <ComboBox x:Name="ModelComboBox"
+                              ItemsSource="{Binding AvailableWhisperModels}"
+                              SelectedItem="{Binding SelectedWhisperModel}"
+                              IsEnabled="{Binding IsModelChanging, Converter={StaticResource InverseBoolConverter}}"
+                              SelectionChanged="ModelComboBox_SelectionChanged"
+                              FontSize="14" Padding="12" Margin="0,0,0,12" />
+
+                    <TextBlock Text="{Binding ModelStatusText}" FontSize="12"
+                               Foreground="{StaticResource GreenBrush}" Margin="0,8,0,0" />
+                </StackPanel>
+            </Border>
+
             <!-- Hotkey Reference -->
             <Border Style="{StaticResource CardStyle}" Padding="24">
                 <StackPanel>

@@ -6,7 +6,7 @@
     <UseWPF>true</UseWPF>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <!-- <ApplicationIcon>vibetotext.ico</ApplicationIcon> -->
+    <ApplicationIcon>vibetotext.ico</ApplicationIcon>
     <AssemblyName>VibeToText</AssemblyName>
     <RootNamespace>VibeToText</RootNamespace>
     <Version>1.0.0</Version>

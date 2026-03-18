@@ -45,6 +45,12 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _settingsStatusText = "";
     [ObservableProperty] private bool _geminiKeyConfigured;
 
+    // Whisper model
+    [ObservableProperty] private string _selectedWhisperModel = "base";
+    [ObservableProperty] private string _modelStatusText = "";
+    [ObservableProperty] private bool _isModelChanging;
+    public string[] AvailableWhisperModels => Core.WhisperTranscriber.AvailableModels;
+
     public MainViewModel()
     {
         _database = App.Database;
@@ -66,6 +72,9 @@ public partial class MainViewModel : ObservableObject
         // Load Gemini API key (masked display)
         GeminiApiKey = _config.GeminiApiKey ?? "";
         GeminiKeyConfigured = App.Gemini.HasApiKey;
+
+        // Load whisper model
+        SelectedWhisperModel = _config.WhisperModel;
 
         Refresh();
     }
@@ -184,6 +193,30 @@ public partial class MainViewModel : ObservableObject
         App.Gemini.LoadApiKey();
         GeminiKeyConfigured = App.Gemini.HasApiKey;
         SettingsStatusText = "Gemini API key saved";
+    }
+
+    [RelayCommand]
+    private async Task ChangeWhisperModel(string? model)
+    {
+        if (string.IsNullOrEmpty(model) || model == _config.WhisperModel) return;
+
+        IsModelChanging = true;
+        ModelStatusText = $"Switching to {model}...";
+
+        try
+        {
+            _config.WhisperModel = model;
+            await App.Pipeline.Transcriber.ChangeModelAsync(model);
+            ModelStatusText = $"Model set to {model}";
+        }
+        catch (Exception ex)
+        {
+            ModelStatusText = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            IsModelChanging = false;
+        }
     }
 
     [RelayCommand]

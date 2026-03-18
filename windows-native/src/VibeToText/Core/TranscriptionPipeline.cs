@@ -12,6 +12,7 @@ public class TranscriptionPipeline : IDisposable
 {
     private readonly AudioRecorder _recorder;
     private readonly WhisperTranscriber _transcriber;
+    public WhisperTranscriber Transcriber => _transcriber;
     private readonly HistoryDatabase _database;
     private readonly PasteService _pasteService;
     private readonly GeminiService _geminiService;

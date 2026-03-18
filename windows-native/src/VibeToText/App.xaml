@@ -15,6 +15,7 @@
             <converters:ModeForegroundConverter x:Key="ModeForegroundConverter" />
             <converters:BoolToVisibilityConverter x:Key="BoolToVisibility" />
             <converters:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibility" />
+            <converters:InverseBoolConverter x:Key="InverseBoolConverter" />
         </ResourceDictionary>
     </Application.Resources>
 </Application>

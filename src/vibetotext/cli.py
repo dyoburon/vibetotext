@@ -15,8 +15,10 @@ from .context import search_context, format_context
 from .greppy import search_files, format_files_for_context
 from .llm import cleanup_text, generate_implementation_plan
 from .output import paste_at_cursor
+from .tts import speak, speak_status
 from .history import TranscriptionHistory
 from .history_ui import toggle_history, refresh_history
+from .api_server import ApiServer
 
 
 def main():
@@ -48,6 +50,11 @@ def main():
         "--plan-hotkey",
         default="cmd+alt+p",
         help="Hotkey for implementation plan mode (default: cmd+alt+p)",
+    )
+    parser.add_argument(
+        "--feedback-hotkey",
+        default="cmd+shift+f",
+        help="Hotkey for voice feedback mode (default: cmd+shift+f)",
     )
     parser.add_argument(
         "--history-hotkey",
@@ -139,6 +146,7 @@ def main():
         args.greppy_hotkey: "greppy",
         args.cleanup_hotkey: "cleanup",
         args.plan_hotkey: "plan",
+        args.feedback_hotkey: "feedback",
         args.history_hotkey: "history",
         args.viz_hotkey: "viz",
     }
@@ -150,6 +158,10 @@ def main():
     # Set up audio level callback for UI
     if ui:
         recorder.on_level = ui.update_waveform
+
+    # Start HTTP API server (TTS endpoint for external tools)
+    api_server = ApiServer()
+    api_server.start()
 
     print(f"vibetotext ready. Hold hotkey to record, release to process.")
     print(f"  [{args.hotkey}] = transcribe + paste")
@@ -277,6 +289,7 @@ def main():
             print(f"Transcribed: {text}")
             _log(f"on_stop: transcribed text='{text[:80]}'")
 
+            files = []
             if mode == "greppy":
                 # Greppy mode: search for relevant files and attach them
                 print("Searching with Greppy...", end="", flush=True)
@@ -324,6 +337,17 @@ def main():
                     print(" failed, using original.")
                     output = text
 
+            elif mode == "feedback":
+                # Feedback mode: paste transcription + TTS endpoint instructions
+                _log("on_stop: feedback mode — appending TTS instructions")
+                speak_url = f"{api_server.url}/api/speak"
+                output = (
+                    f"{text}\n\n"
+                    f"[To respond verbally to the user, POST to {speak_url} "
+                    f'with body: {{"text": "your response here"}}]'
+                )
+                print(f"Feedback mode: pasting with TTS endpoint {speak_url}")
+
             else:
                 # Regular transcribe mode
                 if not args.no_context:
@@ -352,10 +376,15 @@ def main():
             _log(f"on_stop: paste_at_cursor() done ({time.time() - t:.3f}s)")
             print("Pasted at cursor.\n")
 
+            # Speak status report (skip for feedback mode — already spoke)
+            if mode != "feedback":
+                speak_status(mode, text, output, file_count=len(files))
+
             _log(f"on_stop: END total={time.time() - stop_t0:.3f}s")
 
         except Exception as e:
             _log(f"on_stop: EXCEPTION after {time.time() - stop_t0:.3f}s: {e}")
+            speak("Processing failed")
 
             # Log error to file and print to console
             error_log = os.path.join(tempfile.gettempdir(), "vibetotext_crash.log")

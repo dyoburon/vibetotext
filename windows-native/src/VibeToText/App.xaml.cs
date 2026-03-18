@@ -17,6 +17,7 @@ public partial class App : Application
     private MainWindow? _mainWindow;
     private TranscriptionPipeline? _pipeline;
     private HotkeyManager? _hotkeyManager;
+    private ApiServer? _apiServer;
     private Mutex? _singleInstanceMutex;
 
     // Shared services
@@ -87,9 +88,14 @@ public partial class App : Application
             var transcriber = new WhisperTranscriber(Config.WhisperModel);
             var pasteService = new PasteService();
             Gemini = new GeminiService();
+            var ttsService = new TtsService(Config);
 
-            _pipeline = new TranscriptionPipeline(recorder, transcriber, Database, pasteService, Gemini, Config);
+            _pipeline = new TranscriptionPipeline(recorder, transcriber, Database, pasteService, Gemini, ttsService, Config);
             Pipeline = _pipeline;
+
+            // Start HTTP API server for external integrations
+            _apiServer = new ApiServer(ttsService);
+            _apiServer.Start();
 
             Log("Services initialized.");
 
@@ -318,6 +324,7 @@ public partial class App : Application
     private void ExitApplication()
     {
         _hotkeyManager?.Stop();
+        _apiServer?.Dispose();
         _pipeline?.Dispose();
         _trayIcon?.Dispose();
         _singleInstanceMutex?.ReleaseMutex();
@@ -327,6 +334,7 @@ public partial class App : Application
     protected override void OnExit(ExitEventArgs e)
     {
         _hotkeyManager?.Stop();
+        _apiServer?.Dispose();
         _pipeline?.Dispose();
         _trayIcon?.Dispose();
         _singleInstanceMutex?.ReleaseMutex();

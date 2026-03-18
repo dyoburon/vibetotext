@@ -16,6 +16,7 @@ public class TranscriptionPipeline : IDisposable
     private readonly HistoryDatabase _database;
     private readonly PasteService _pasteService;
     private readonly GeminiService _geminiService;
+    private readonly TtsService _ttsService;
     private readonly ConfigStore _config;
 
     private WaveformOverlay? _overlay;
@@ -46,6 +47,7 @@ public class TranscriptionPipeline : IDisposable
         HistoryDatabase database,
         PasteService pasteService,
         GeminiService geminiService,
+        TtsService ttsService,
         ConfigStore config)
     {
         _recorder = recorder;
@@ -53,6 +55,7 @@ public class TranscriptionPipeline : IDisposable
         _database = database;
         _pasteService = pasteService;
         _geminiService = geminiService;
+        _ttsService = ttsService;
         _config = config;
 
         _recorder.OnLevelUpdate += levels =>
@@ -194,6 +197,18 @@ public class TranscriptionPipeline : IDisposable
                     var plan = await _geminiService.GeneratePlanAsync(text);
                     output = plan ?? text;
                     break;
+                case RecordingMode.Feedback:
+                    var feedback = await _geminiService.GenerateFeedbackAsync(text);
+                    if (feedback != null)
+                    {
+                        _ttsService.Speak(feedback);
+                    }
+                    else
+                    {
+                        _ttsService.Speak("I couldn't generate feedback, sir");
+                    }
+                    // Still paste the original transcription
+                    break;
                 case RecordingMode.Transcribe:
                 default:
                     break;
@@ -207,11 +222,16 @@ public class TranscriptionPipeline : IDisposable
             await _pasteService.PasteAtCursorAsync(output);
             Log("Pasted at cursor.");
 
+            // Speak status report
+            var status = TtsService.GenerateStatusMessage(mode, text, output);
+            _ttsService.Speak(status);
+
             _currentMode = null;
         }
         catch (Exception ex)
         {
             Log($"ERROR in processing: {ex}");
+            _ttsService.Speak("Processing failed");
             System.Windows.Application.Current?.Dispatcher.Invoke(() =>
             {
                 _overlay?.SetRecording(false);
@@ -224,5 +244,6 @@ public class TranscriptionPipeline : IDisposable
     {
         _recorder.Dispose();
         _transcriber.Dispose();
+        _ttsService.Dispose();
     }
 }

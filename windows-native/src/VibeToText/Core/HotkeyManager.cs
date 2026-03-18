@@ -9,6 +9,7 @@ public enum RecordingMode
     Greppy,
     Cleanup,
     Plan,
+    Feedback,
     History
 }
 
@@ -28,6 +29,7 @@ public class HotkeyManager : IDisposable
     {
         [new HashSet<ModKey> { ModKey.Ctrl, ModKey.Shift }] = RecordingMode.Transcribe,
         [new HashSet<ModKey> { ModKey.Alt, ModKey.Shift }] = RecordingMode.Cleanup,
+        [new HashSet<ModKey> { ModKey.Ctrl, ModKey.Shift, ModKey.Alt }] = RecordingMode.Feedback,
         [new HashSet<ModKey> { ModKey.Ctrl, ModKey.Alt }] = RecordingMode.History,
     };
 

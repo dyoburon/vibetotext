@@ -20,11 +20,19 @@ All implementations share the same SQLite database at `~/.vibetotext/history.db`
 - `Cmd+Shift` — **Greppy** mode with semantic code search
 - `Alt+Shift` — **Cleanup** mode (AI refines rambling into clear prompts)
 - `Cmd+Alt` — **Plan** mode (generates structured implementation plans)
+- `Cmd+Shift+F` — **Feedback** mode (pastes transcription with TTS endpoint instructions so any LLM can speak back)
 
 **Fast Local Transcription**
 - Whisper.cpp for 2-4x faster transcription than Python Whisper
 - Technical vocabulary bias for programming terms
 - Auto-paste to cursor
+
+**JARVIS-style TTS Status Reports**
+- Neural voice (edge-tts, en-GB-RyanNeural) speaks status after each action
+- Chunked playback for long text — first sentence plays immediately while rest generates in background
+- HTTP API server at `http://127.0.0.1:7865` enables any external tool to speak via `POST /api/speak`
+- Configurable voice, rate, pitch, and volume in `~/.vibetotext/config.json`
+- Falls back to platform TTS (SAPI/say/espeak-ng) when offline
 
 ## Analytics & Settings
 

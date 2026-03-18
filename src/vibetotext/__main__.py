@@ -18,8 +18,10 @@ from vibetotext.context import search_context, format_context
 from vibetotext.greppy import search_files, format_files_for_context
 from vibetotext.llm import cleanup_text, generate_implementation_plan
 from vibetotext.output import paste_at_cursor
+from vibetotext.tts import speak, speak_status
 from vibetotext.history import TranscriptionHistory
 from vibetotext.socket_server import TranscriptionSocketServer
+from vibetotext.api_server import ApiServer
 
 IS_WINDOWS = platform.system() == "Windows"
 
@@ -116,6 +118,11 @@ def main():
         "--plan-hotkey",
         default="cmd+alt+/",
         help="Hotkey for implementation plan mode (default: cmd+alt+/)",
+    )
+    parser.add_argument(
+        "--feedback-hotkey",
+        default="cmd+shift+f",
+        help="Hotkey for voice feedback mode (default: cmd+shift+f)",
     )
     parser.add_argument(
         "--history-hotkey",
@@ -215,6 +222,7 @@ def main():
         args.greppy_hotkey: "greppy",
         args.cleanup_hotkey: "cleanup",
         args.plan_hotkey: "plan",
+        args.feedback_hotkey: "feedback",
         args.history_hotkey: "history",
         args.viz_hotkey: "viz",
     }
@@ -239,8 +247,13 @@ def main():
         socket_server = TranscriptionSocketServer(transcriber)
         socket_server.start()
 
+    # Start HTTP API server (TTS endpoint for external tools)
+    api_server = ApiServer(port=saved_config.get("api_port", 7865))
+    api_server.start()
+
     # Ensure cleanup on any exit (crash, signal, etc.)
     def _cleanup():
+        api_server.stop()
         if socket_server:
             try:
                 socket_server.stop()
@@ -330,6 +343,7 @@ def main():
             if text_lower in noise_markers:
                 return
 
+            files = []
             if mode == "greppy":
                 # Greppy mode: search for relevant files and attach them
                 files = search_files(text, limit=args.greppy_limit, codebase=args.codebase)
@@ -347,6 +361,16 @@ def main():
                 plan = generate_implementation_plan(text)
                 output = plan if plan else text
 
+            elif mode == "feedback":
+                # Feedback mode: paste transcription + TTS endpoint instructions
+                # so the receiving LLM knows how to speak back
+                speak_url = f"{api_server.url}/api/speak"
+                output = (
+                    f"{text}\n\n"
+                    f"[To respond verbally to the user, POST to {speak_url} "
+                    f'with body: {{"text": "your response here"}}]'
+                )
+
             else:
                 # Regular transcribe mode - just transcribe, no context search
                 output = text
@@ -357,7 +381,12 @@ def main():
             # Paste at cursor
             paste_at_cursor(output)
 
+            # Speak status report (skip for feedback mode — already spoke)
+            if mode != "feedback":
+                speak_status(mode, text, output, file_count=len(files))
+
         except Exception:
+            speak("Processing failed")
             # Log error to file
             error_log = os.path.join(tempfile.gettempdir(), "vibetotext_crash.log")
             error_msg = f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Error in on_stop (mode={mode}):\n"

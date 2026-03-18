@@ -38,6 +38,9 @@
 
     <!-- MVVM -->
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+
+    <!-- Text-to-Speech -->
+    <PackageReference Include="System.Speech" Version="9.0.0" />
   </ItemGroup>
 
 </Project>

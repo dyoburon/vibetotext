@@ -29,6 +29,18 @@ final class GeminiService {
         return try await generateContent(prompt: prompt, apiKey: apiKey, temperature: 0.4, maxTokens: 4096)
     }
 
+    // MARK: - Feedback mode
+
+    func feedback(text: String) async throws -> String? {
+        guard let apiKey = ConfigStore.shared.geminiAPIKey else {
+            print("[Gemini] No API key configured")
+            return nil
+        }
+
+        let prompt = Self.feedbackPrompt.replacingOccurrences(of: "{text}", with: text)
+        return try await generateContent(prompt: prompt, apiKey: apiKey, temperature: 0.5, maxTokens: 256)
+    }
+
     // MARK: - REST API call
 
     private func generateContent(prompt: String, apiKey: String, temperature: Double, maxTokens: Int) async throws -> String? {
@@ -86,6 +98,23 @@ final class GeminiService {
     {text}
 
     Refined output:
+    """
+
+    static let feedbackPrompt = """
+    You are JARVIS, a calm and concise AI assistant. The user has spoken to you and needs a brief verbal response.
+
+    Rules:
+    - Respond in 1-3 short sentences MAX. This will be spoken aloud via TTS.
+    - Be direct and helpful. No filler, no "I think", no hedging.
+    - Use natural spoken English — contractions, simple words. No markdown, no bullet points.
+    - If they asked a question, answer it. If they described something, give concise feedback.
+    - Address the user as "sir" occasionally but not every sentence.
+    - Sound like a knowledgeable, confident AI assistant.
+
+    User said:
+    {text}
+
+    Your spoken response:
     """
 
     static let planPrompt = """

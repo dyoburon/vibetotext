@@ -11,6 +11,12 @@ final class ConfigStore: ObservableObject {
     @Published var audioDeviceName: String?
     @Published var codebasePath: String?
     @Published var customDictionary: [String]
+    @Published var ttsEnabled: Bool = true
+    @Published var ttsRate: Int = 200
+    @Published var ttsVolume: Int = 80
+    @Published var ttsVoice: String?
+    @Published var ttsEdgeRate: String?
+    @Published var ttsEdgePitch: String?
 
     private init() {
         let dir = FileManager.default.homeDirectoryForCurrentUser
@@ -32,6 +38,12 @@ final class ConfigStore: ObservableObject {
             audioDeviceName = json["audio_device_name"] as? String
             codebasePath = json["codebase_path"] as? String
             customDictionary = json["custom_dictionary"] as? [String] ?? []
+            ttsEnabled = json["tts_enabled"] as? Bool ?? true
+            ttsRate = json["tts_rate"] as? Int ?? 200
+            ttsVolume = json["tts_volume"] as? Int ?? 80
+            ttsVoice = json["tts_voice"] as? String
+            ttsEdgeRate = json["tts_edge_rate"] as? String
+            ttsEdgePitch = json["tts_edge_pitch"] as? String
         } catch {
             print("[ConfigStore] Failed to load config: \(error)")
         }
@@ -68,6 +80,24 @@ final class ConfigStore: ObservableObject {
                 json.removeValue(forKey: "codebase_path")
             }
             json["custom_dictionary"] = customDictionary
+            json["tts_enabled"] = ttsEnabled
+            json["tts_rate"] = ttsRate
+            json["tts_volume"] = ttsVolume
+            if let voice = ttsVoice {
+                json["tts_voice"] = voice
+            } else {
+                json.removeValue(forKey: "tts_voice")
+            }
+            if let edgeRate = ttsEdgeRate {
+                json["tts_edge_rate"] = edgeRate
+            } else {
+                json.removeValue(forKey: "tts_edge_rate")
+            }
+            if let edgePitch = ttsEdgePitch {
+                json["tts_edge_pitch"] = edgePitch
+            } else {
+                json.removeValue(forKey: "tts_edge_pitch")
+            }
 
             let data = try JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys])
             try data.write(to: configURL, options: .atomic)

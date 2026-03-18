@@ -178,3 +178,51 @@ def generate_implementation_plan(text: str) -> Optional[str]:
     except Exception as e:
         print(f"Gemini plan generation error: {e}")
         return None
+
+
+FEEDBACK_PROMPT = """You are JARVIS, a calm and concise AI assistant. The user has spoken to you and needs a brief verbal response.
+
+Rules:
+- Respond in 1-3 short sentences MAX. This will be spoken aloud via TTS.
+- Be direct and helpful. No filler, no "I think", no hedging.
+- Use natural spoken English — contractions, simple words. No markdown, no bullet points.
+- If they asked a question, answer it. If they described something, give concise feedback.
+- Address the user as "sir" occasionally but not every sentence.
+- Sound like a knowledgeable, confident AI assistant.
+
+To speak your response aloud, send a POST request to the user's TTS endpoint:
+  POST {speak_url}
+  Content-Type: application/json
+  {{"text": "your response here"}}
+
+User said:
+{text}
+
+Your spoken response:"""
+
+
+def generate_feedback(text: str, speak_url: str = "http://127.0.0.1:7865/api/speak") -> Optional[str]:
+    """Use Gemini to generate a concise spoken feedback response."""
+    if not _genai_available:
+        print("Gemini feedback error: google-genai package not installed")
+        return None
+    if not _client:
+        print("Gemini feedback error: No API key configured")
+        return None
+
+    try:
+        prompt = FEEDBACK_PROMPT.format(text=text, speak_url=speak_url)
+        response = _client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+            config=genai_types.GenerateContentConfig(
+                temperature=0.5,
+                max_output_tokens=256,
+            ),
+        )
+        if response.text:
+            return response.text.strip()
+        return None
+    except Exception as e:
+        print(f"Gemini feedback error: {e}")
+        return None

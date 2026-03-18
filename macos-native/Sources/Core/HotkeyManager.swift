@@ -33,6 +33,8 @@ final class HotkeyManager {
     private let hotkeys: [HotkeyDef] = [
         // cmd+alt+p (key code 35 = 'p')
         HotkeyDef(modifiers: [.maskCommand, .maskAlternate], keyCode: 35, mode: "plan"),
+        // cmd+shift+f (key code 3 = 'f')
+        HotkeyDef(modifiers: [.maskCommand, .maskShift], keyCode: 3, mode: "feedback"),
         // cmd+alt+shift (modifiers only) — must be before alt+shift (more specific)
         HotkeyDef(modifiers: [.maskCommand, .maskAlternate, .maskShift], keyCode: nil, mode: "greppy"),
         // alt+shift (modifiers only)
@@ -76,6 +78,7 @@ final class HotkeyManager {
         print("  [alt+shift]     = cleanup")
         print("  [cmd+alt+shift] = greppy")
         print("  [cmd+alt+p]     = plan")
+        print("  [cmd+shift+f]   = feedback")
     }
 
     func stop() {

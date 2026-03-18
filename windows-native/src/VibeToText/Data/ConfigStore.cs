@@ -23,6 +23,12 @@ public partial class ConfigStore : ObservableObject
     private string? _geminiApiKey;
     private string _whisperModel = "base";
     private List<string> _customDictionary = new();
+    private bool _ttsEnabled = true;
+    private int _ttsRate = 200;
+    private int _ttsVolume = 80;
+    private string? _ttsVoice;
+    private string _ttsEdgeRate = "+12%";
+    private string _ttsEdgePitch = "+1Hz";
     private JsonObject? _rawJson; // Preserve unknown keys
 
     public int? AudioDeviceIndex
@@ -61,6 +67,42 @@ public partial class ConfigStore : ObservableObject
         set { SetProperty(ref _customDictionary, value); Save(); }
     }
 
+    public bool TtsEnabled
+    {
+        get => _ttsEnabled;
+        set { SetProperty(ref _ttsEnabled, value); Save(); }
+    }
+
+    public int TtsRate
+    {
+        get => _ttsRate;
+        set { SetProperty(ref _ttsRate, value); Save(); }
+    }
+
+    public int TtsVolume
+    {
+        get => _ttsVolume;
+        set { SetProperty(ref _ttsVolume, value); Save(); }
+    }
+
+    public string? TtsVoice
+    {
+        get => _ttsVoice;
+        set { SetProperty(ref _ttsVoice, value); Save(); }
+    }
+
+    public string TtsEdgeRate
+    {
+        get => _ttsEdgeRate;
+        set { SetProperty(ref _ttsEdgeRate, value); Save(); }
+    }
+
+    public string TtsEdgePitch
+    {
+        get => _ttsEdgePitch;
+        set { SetProperty(ref _ttsEdgePitch, value); Save(); }
+    }
+
     public ConfigStore()
     {
         Directory.CreateDirectory(ConfigDir);
@@ -91,6 +133,13 @@ public partial class ConfigStore : ObservableObject
                     .Where(s => !string.IsNullOrEmpty(s))
                     .ToList();
             }
+
+            _ttsEnabled = _rawJson["tts_enabled"]?.GetValue<bool>() ?? true;
+            _ttsRate = _rawJson["tts_rate"]?.GetValue<int>() ?? 200;
+            _ttsVolume = _rawJson["tts_volume"]?.GetValue<int>() ?? 80;
+            _ttsVoice = _rawJson["tts_voice"]?.GetValue<string>();
+            _ttsEdgeRate = _rawJson["tts_edge_rate"]?.GetValue<string>() ?? "+12%";
+            _ttsEdgePitch = _rawJson["tts_edge_pitch"]?.GetValue<string>() ?? "+1Hz";
         }
         catch (Exception ex)
         {
@@ -126,6 +175,17 @@ public partial class ConfigStore : ObservableObject
                 _rawJson.Remove("gemini_api_key");
 
             _rawJson["whisper_model"] = _whisperModel;
+
+            _rawJson["tts_enabled"] = _ttsEnabled;
+            _rawJson["tts_rate"] = _ttsRate;
+            _rawJson["tts_volume"] = _ttsVolume;
+            if (_ttsVoice != null)
+                _rawJson["tts_voice"] = _ttsVoice;
+            else
+                _rawJson.Remove("tts_voice");
+
+            _rawJson["tts_edge_rate"] = _ttsEdgeRate;
+            _rawJson["tts_edge_pitch"] = _ttsEdgePitch;
 
             var dictArray = new JsonArray();
             foreach (var word in _customDictionary)

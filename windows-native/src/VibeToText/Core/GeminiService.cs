@@ -36,6 +36,23 @@ public class GeminiService
         Refined output:
         """;
 
+    private const string FeedbackPrompt = """
+        You are JARVIS, a calm and concise AI assistant. The user has spoken to you and needs a brief verbal response.
+
+        Rules:
+        - Respond in 1-3 short sentences MAX. This will be spoken aloud via TTS.
+        - Be direct and helpful. No filler, no "I think", no hedging.
+        - Use natural spoken English — contractions, simple words. No markdown, no bullet points.
+        - If they asked a question, answer it. If they described something, give concise feedback.
+        - Address the user as "sir" occasionally but not every sentence.
+        - Sound like a knowledgeable, confident AI assistant.
+
+        User said:
+        {text}
+
+        Your spoken response:
+        """;
+
     private const string PlanPrompt = """
         You are a senior software architect. Transform a rambling voice description into a concise implementation plan.
 
@@ -144,6 +161,11 @@ public class GeminiService
     public async Task<string?> GeneratePlanAsync(string text)
     {
         return await CallGeminiAsync(PlanPrompt.Replace("{text}", text), 0.4f, 4096);
+    }
+
+    public async Task<string?> GenerateFeedbackAsync(string text)
+    {
+        return await CallGeminiAsync(FeedbackPrompt.Replace("{text}", text), 0.5f, 256);
     }
 
     private async Task<string?> CallGeminiAsync(string prompt, float temperature, int maxTokens)
